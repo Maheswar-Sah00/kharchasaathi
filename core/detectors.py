@@ -49,8 +49,11 @@ def detect_recurring(rows):
         # stable = one price, or a single step change (a price hike) seen across >= 3 months.
         # With only 2 months, two different amounts are just as likely random purchases -> not a subscription.
         steps = sum(1 for a, b in zip(paid, paid[1:]) if a != b)
-        stable = len(set(paid)) == 1 or (len(paid) >= 3 and len(set(paid)) == 2 and steps == 1)
         cat = firsts[-1]["category"]
+        stable = (len(set(paid)) == 1
+                  or (len(paid) >= 3 and len(set(paid)) == 2 and steps == 1)
+                  # 2 months, one price step: only for digital subscriptions billed on (almost) the same day
+                  or (len(paid) == 2 and cat == "Entertainment & Subscriptions" and max(days) - min(days) <= 2))
         if cat in SUB_CATS:
             kind = "subscription" if stable else "variable_bill"
         else:

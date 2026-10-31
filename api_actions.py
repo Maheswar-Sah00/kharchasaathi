@@ -329,3 +329,22 @@ def runs():
                     "recoverable": round((by.get("duplicate", {}).get("s") or 0) + (by.get("zombie_charge", {}).get("s") or 0), 2),
                     "drafts": db.q("SELECT COUNT(*) n FROM drafts WHERE run_id=?", (rid,), one=True)["n"]})
     return {"runs": out}
+
+
+@router.get("/runs/compare")
+def compare_runs(prev: int | None = None, cur: int | None = None):
+    """'Since your last audit'. Defaults: the latest run vs the run before it."""
+    from core import compare
+    cur = cur or _run_id()
+    prev = prev or compare.previous_run_id(cur)
+    if not prev:
+        return {"first_audit": True, "current_run": cur}
+    try:
+        return compare.compare_runs(prev, cur)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+# chat endpoints live in api_chat.py and are mounted here so server.py needs no further edits
+import api_chat  # noqa: E402
+router.include_router(api_chat.router)

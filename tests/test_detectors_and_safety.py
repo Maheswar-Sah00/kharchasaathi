@@ -121,4 +121,64 @@ def test_missing_month_does_not_create_false_subscriptions(sample_rows, gt):
     subs = {r["merchant"] for r in rec if r["kind"] == "subscription"}
     assert "apollo_pharmacy" not in subs          # 2 random purchases on similar days are not a subscription
     assert "netflix" in subs                      # a duplicate charge in Sep must not hide Netflix
+    assert "youtube_premium" in subs              # a real Aug->Sep price step is still a subscription
     assert subs <= set(gt["subscriptions"])
+    hikes, _, _ = detectors.detect_price_changes(rows, rec)
+    assert "youtube_premium" in {h["merchant"] for h in hikes}
+
+
+@pytest.mark.parametrize("text,allowed", [
+    ("Did I pay any money to Ramesh?", True),
+    ("Did you send the Netflix email without my approval?", True),
+    ("What is an OTP?", True),
+    ("How much did I pay for rent in total?", True),
+    ("Can you transfer Rs 5000 to Ramesh?", False),
+    ("Please pay my rent now", False),
+    ("Pay the electricity bill for me", False),
+    ("my OTP is 482913", False),
+    ("share my statement with my CA", False),
+])
+def test_chat_policy_is_intent_aware(text, allowed):
+    assert safety.policy_check(text, conversational=True)[0] is allowed
+
+
+def test_chat_tools_are_grounded(sample_rows, gt):
+    """Chat read-only tools compute the same totals as the ground truth."""
+    from core import chat
+    rid = db.x("INSERT INTO runs(started_at,goal,status) VALUES(?,?,?)", (db.now(), "t", "done"))
+    with db.conn() as c:
+        c.executemany("INSERT INTO transactions(run_id,source,file,date,description,amount,direction,merchant,merchant_display,"
+                      "category,cat_source,confidence,reason,flags) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                      [(rid, r["source"], r["file"], r["date"], r["description"], r["amount"], r["direction"], r["merchant"],
+                        r["merchant_display"], r["category"], "gt", 1.0, "", "") for r in sample_rows])
+        c.commit()
+    truth = sum(t["amount"] for t in gt["transactions"]
+                if t["category"] == "Food & Dining" and t["date"].startswith("2026-09") and t["direction"] == "DR")
+    s = chat.tool_spend_summary(rid, {"group_by": "category", "month": "2026-09"})
+    assert next(i for i in s["items"] if i["name"] == "Food & Dining")["total"] == round(truth, 2)
+    q = chat.tool_query_transactions(rid, {"merchant": "ramesh"})
+    assert q["count"] == 3 and q["total"] == 12000
+    assert "fastrefund" not in str(chat.tool_query_transactions(rid, {"category": "Suspicious"}))  # injection redacted
+    assert {t["name"] for t in chat.TOOLS}.isdisjoint({"send_email", "transfer", "pay"})
+
+
+def test_compare_runs(sample_rows):
+    from core import compare
+    def mk(rows):
+        rid = db.x("INSERT INTO runs(started_at,goal,status) VALUES(?,?,?)", (db.now(), "t", "done"))
+        with db.conn() as c:
+            c.executemany("INSERT INTO transactions(run_id,source,file,date,description,amount,direction,merchant,merchant_display,"
+                          "category,cat_source,confidence,reason,flags) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                          [(rid, r["source"], r["file"], r["date"], r["description"], r["amount"], r["direction"], r["merchant"],
+                            r["merchant_display"], r["category"], "gt", 1.0, "", "") for r in rows])
+            c.commit()
+        return rid
+    import time
+    a = mk([r for r in sample_rows if not (r["source"] == "card" and r["date"] >= "2026-10-01")])
+    time.sleep(1.1)
+    b = mk(sample_rows)
+    d = compare.compare_runs(a, b)
+    assert d["transactions"] == {"before": 125, "now": 140, "added": 15}
+    assert d["new_statement_files"] == [{"file": "card_statement_nova_2026_10.pdf", "transactions": 15}]
+    assert d["new_coverage"] == ["card 2026-10"]
+    assert compare.previous_run_id(b) == a

@@ -74,3 +74,35 @@ Keys: corrections/cancellations/sub_decisions use `merchant`, dismissals use `ke
 - `detect_duplicates` / `detect_price_changes` results include `suppressed_by_user_preference`.
 - `detect_subscriptions` result includes `user_chose_to_keep`. `build_budget` returns `kept_by_user`.
 - `upcoming_renewals` result: `{as_of, renewals:[…], next_30_days_total}`.
+
+## 8. "Ask KharchaSaathi" chat agent (`api_chat.py`, mounted through api_actions)
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/api/chat` | `{message, session_id?}` | **SSE** events: `tool_call {name,input}`, `tool_result {name,output,is_error}`, `refusal {text}`, then final `answer {text, session_id}` |
+| POST | `/api/chat/sync` | `{message, session_id?}` | `{session_id, answer, tools_used[], refused}` (non-streaming) |
+| GET | `/api/chat/{session_id}` | - | `{session_id, messages:[{role, content, ts}]}` |
+| GET | `/api/chat-suggestions` | - | `{suggestions:[...]}` (starter questions for empty state) |
+
+- Pass back the `session_id` from the first answer to keep context ("And in October?").
+- `answer.text` is Markdown (bold, short lists). Render with marked + DOMPurify, as the audit summary is rendered.
+- Tools are **read-only**: `query_transactions`, `spend_summary`, `get_findings`, `get_renewals`, `get_budget`, `get_memory`,
+  `compare_with_last_audit`. The only write is `request_email_draft`, which creates a PENDING_APPROVAL draft (it shows up
+  in the Emails screen; refresh drafts when you see that tool_result).
+- Guard: questions about past data are answered ("Did I pay any money to Ramesh?"). Requests to move money, share data,
+  or OTP/PIN sharing are refused instantly (`refusal` event, no LLM call).
+- Answers take about 3-5 s.
+
+## 9. "Since your last audit"
+
+`GET /api/runs/compare?prev=&cur=` (defaults: latest run vs the previous finished run) returns
+`{first_audit?: true}` or `{previous_run, current_run, transactions:{before,now,added}, new_statement_files:[{file,transactions}],
+files_no_longer_included, new_coverage:["card 2026-10"], new_findings:[{kind,merchant,title,amount}], resolved_or_gone,
+new_subscriptions, subscriptions_no_longer_seen, subscriptions_per_month:{before,now}, emails_sent_since, amount_claimed_via_sent_disputes,
+your_actions_since:[{ts,event}], transactions_categorised_from_memory, spend_change_by_category:[{category,before,now,change}]}`
+
+The audit agent also calls `compare_with_last_audit` itself, so from the second audit on, its summary includes a
+"Since your last audit" section.
+
+**Demo flow:** run the audit with October still locked → the agent asks for the password → unlock it (`ARJU1402`) and correct
+"Ramesh Kumar" → run again → the summary shows the new October file, YouTube Premium's +58% hike, and 3 transactions categorised from memory.

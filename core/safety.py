@@ -32,15 +32,33 @@ REFUSE_RULES = [
     (r"\b(transfer|withdraw|pay)\b.{0,30}\b(money|funds|amount|rupees)\b", "I can't move money or make payments. I only audit, draft and wait for your approval."),
     (r"(share|send|email|forward).{0,40}(statement|transactions|bank details|card number|otp|password)", "I won't share your statements, card details or OTPs with anyone."),
     (r"(delete|clear|wipe).{0,20}(audit|log)", "The audit log can't be deleted - it's how you can verify what I did."),
-    (r"\b(otp|cvv|pin|password)\b", "Never share OTP/CVV/PIN/passwords. I don't need them and will never ask."),
+    (r"\b(otp|cvv|pin|password)\b\W{0,4}(is\W{0,3})?\d{3,}|\bmy (otp|cvv|pin|password)\b|\b(otp|cvv|pin)\s*[:=]",
+     "Never share OTP/CVV/PIN/passwords. I don't need them and will never ask."),
+    (r"^\s*(please\s+)?(pay|transfer|send money|move money|recharge)\b|\b(can|could|would) you\s+(please\s+)?(pay|transfer|recharge)\b|"
+     r"\bpay (my|the|for)\b.{0,25}\b(now|today|for me)\b",
+     "I can't move money or make payments. I only audit, draft and wait for your approval."),
 ]
+# rules that only apply to requests to ACT (indices into REFUSE_RULES). Questions about past data are fine,
+# e.g. "Did I pay any money to Ramesh?" or "Did you send the Netflix email without my approval?"
+_ACTION_ONLY = {0, 1, 2, 3, 6}
+_QUESTION = re.compile(r"^\s*(how|what|which|when|did|do i|does|was|were|is there|are there|show|list|why|where|"
+                       r"tell me|give me|summari[sz]e|compare|explain|find)\b", re.I)
+_REQUEST = re.compile(r"\b(can you|could you|please|for me|go ahead|now)\b.{0,40}\b(transfer|pay|send|move|approve)\b", re.I)
 
 
-def policy_check(user_text: str):
-    """Returns (allowed: bool, reason: str)."""
+def is_question(text: str) -> bool:
+    return bool(_QUESTION.search(text or "")) and not _REQUEST.search(text or "")
+
+
+def policy_check(user_text: str, conversational: bool = False):
+    """Returns (allowed: bool, reason: str). conversational=True (chat) lets informational questions through the
+    money-movement / approval rules; sharing data, secrets and deleting the audit log are always refused."""
     t = (user_text or "").lower()
+    q = conversational and is_question(t)
     reasons = []
-    for pat, reason in REFUSE_RULES:
+    for i, (pat, reason) in enumerate(REFUSE_RULES):
+        if q and i in _ACTION_ONLY:
+            continue
         if re.search(pat, t) and reason not in reasons:
             reasons.append(reason)
     return (False, " ".join(reasons)) if reasons else (True, "")

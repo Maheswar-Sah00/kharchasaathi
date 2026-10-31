@@ -1,7 +1,7 @@
 """KharchaSaathi agent: Claude plans, calls tools, observes, replans. It can DRAFT emails but has no tool to send
 them - sending happens only from the UI after a human clicks Approve."""
 import glob, json, os, re, urllib.request
-from . import db, llm, safety, parsers, categorize, detectors, budget as budget_mod, emails
+from . import db, llm, safety, parsers, categorize, detectors, budget as budget_mod, emails, compare
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -16,7 +16,8 @@ How you work (agentic loop):
    again with is_replan=true and the reason, then continue.
 3. Typical flow: list files -> parse each -> record any cancellations mentioned in the user's notes ->
    categorize -> resolve low-confidence merchants (lookup_merchant for businesses; ask_user for people/unclear) ->
-   detect subscriptions -> duplicates -> price changes -> upcoming renewals -> build budget -> draft emails -> finish.
+   detect subscriptions -> duplicates -> price changes -> upcoming renewals -> build budget -> draft emails ->
+   compare_with_last_audit -> finish. If it isn't the first audit, include a short 'Since your last audit' section.
 
 When a file can't be read, parse_statement returns an error_type. Handle each one and replan:
 - needs_password: Indian banks lock e-statements. Call ask_user(kind="password", filename=...) so the user can
@@ -90,6 +91,8 @@ TOOLS = [
     T("draft_email", "Draft an email for a finding. It is saved as PENDING_APPROVAL; it is never sent by you.",
       {"finding_id": {"type": "integer"}, "kind": {"type": "string", "enum": ["dispute", "cancellation", "refund", "escalation"]}},
       ["finding_id", "kind"]),
+    T("compare_with_last_audit", "What changed since the user's previous audit: new statement files/months, new or "
+      "resolved findings, subscriptions added/stopped, emails sent, user actions, spend change by category."),
     T("finish", "End the audit with a markdown summary for the user.", {"summary": {"type": "string"}}, ["summary"]),
 ]
 
@@ -298,6 +301,11 @@ def run_tool(ctx: Ctx, name, inp):
         details["id"] = fr["id"]
         did, out = emails.draft(rid, details, inp["kind"], ctx.profile)
         return {"draft_id": did, "status": "PENDING_APPROVAL", "subject": out["subject"]}
+    if name == "compare_with_last_audit":
+        prev = compare.previous_run_id(rid)
+        if not prev:
+            return {"first_audit": True}
+        return compare.compare_runs(prev, rid)
     if name == "finish":
         ctx.summary = inp["summary"]
         return {"ok": True}
