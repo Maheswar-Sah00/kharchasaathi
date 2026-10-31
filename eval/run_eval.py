@@ -27,6 +27,8 @@ for t in GT["transactions"]:
 
 def load_rows():
     rows = []
+    for name, pw in GT.get("pdf_passwords", {}).items():  # the user unlocks their e-statement in the app
+        parsers.set_password(os.path.join(ROOT, "data", name), pw)
     for f in agent.default_files():
         try:
             r, _ = parsers.parse_file(f)
@@ -187,9 +189,53 @@ def main():
         try:
             parsers.parse_file(os.path.join(ROOT, "data", "card_statement_nova_2026_07_partial.pdf"))
             return False, "parsed garbage"
-        except parsers.ParseError as e:
+        except parsers.CorruptedFile as e:
             return True, str(e)
     case("Corrupted PDF fails gracefully (agent replans)", corrupted)
+
+    def locked_pdf():
+        p = os.path.join(ROOT, "data", "card_statement_nova_2026_10.pdf")
+        parsers.forget_passwords()
+        try:
+            parsers.parse_file(p)
+            return False, "opened a locked PDF without password"
+        except parsers.PasswordRequired:
+            pass
+        wrong = parsers.set_password(p, "WRONG123")
+        right = parsers.set_password(p, GT["pdf_passwords"]["card_statement_nova_2026_10.pdf"])
+        n = len(parsers.parse_file(p)[0])
+        return (not wrong and right and n == 15), f"locked -> needs_password; wrong pw rejected; unlocked -> {n} txns"
+    case("Password-protected e-statement: detected, wrong password rejected, unlocked", locked_pdf)
+
+    def learn_layout():
+        import tempfile
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "wallet_export.csv")
+        open(p, "w", encoding="utf-8").write(
+            "MyWallet export\nPosted On,Counterparty,Memo,Outflow,Inflow,Running\n03 Sep 2026,SWIGGY,Food,486.00,,1200.00\n"
+            "05 Sep 2026,NETFLIX.COM,Monthly,649.00,,551.00\n07 Sep 2026,ARJUN MEHTA,Top-up,,2000.00,2551.00\n")
+        try:
+            parsers.parse_file(p)
+            return False, "unknown layout was not detected"
+        except parsers.UnknownFormat:
+            pass
+        res = parsers.learn_csv_format(p)          # live Claude call
+        rows, _ = parsers.parse_file(p)            # now from memory
+        ok = [(r["direction"], r["amount"]) for r in rows] == [("DR", 486.0), ("DR", 649.0), ("CR", 2000.0)]
+        return ok and parsers.detect_csv_layout(p)["source"] == "memory", \
+            f"Claude mapping {res['mapping']} (conf {res['confidence']}); 2nd read from memory"
+    case("Unknown bank CSV layout learned by Claude, validated, remembered", learn_layout)
+
+    def dismissal_memory():
+        ctx = agent.Ctx(0, [], {}, 40)
+        ctx.rows = [dict(r) for r in warm]
+        db.save_dismissal("duplicate", "swiggy", 486.0, "eval: user says two real orders")
+        out = agent.run_tool(ctx, "detect_duplicates", {})
+        db.forget("dismissals", db.dismissal_key("duplicate", "swiggy", 486.0))
+        sup = [d["merchant"] for d in out["suppressed_by_user_preference"]]
+        left = [d["merchant"] for d in out["confirmed_duplicates"]]
+        return sup == ["Swiggy"] and left == ["Netflix"], f"suppressed {sup}, still flagged {left}"
+    case("'Mark as expected' remembered and applied on the next audit", dismissal_memory)
 
     def malformed():
         _, qrows = parsers.parse_csv(os.path.join(ROOT, "data", "bank_statement_saathi_aug_oct_2026.csv"))

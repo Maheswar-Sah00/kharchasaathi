@@ -16,7 +16,18 @@ How you work (agentic loop):
    again with is_replan=true and the reason, then continue.
 3. Typical flow: list files -> parse each -> record any cancellations mentioned in the user's notes ->
    categorize -> resolve low-confidence merchants (lookup_merchant for businesses; ask_user for people/unclear) ->
-   detect subscriptions -> duplicates -> price changes -> build budget -> draft emails -> finish.
+   detect subscriptions -> duplicates -> price changes -> upcoming renewals -> build budget -> draft emails -> finish.
+
+When a file can't be read, parse_statement returns an error_type. Handle each one and replan:
+- needs_password: Indian banks lock e-statements. Call ask_user(kind="password", filename=...) so the user can
+  unlock it in the app, then CONTINUE with the other files. Never guess or brute-force passwords. In the summary,
+  say which months/cards are missing and that the user can unlock the file and re-run.
+- unknown_format: call learn_csv_format(filename) (it infers and remembers the bank's column layout), then call
+  parse_statement again for that file.
+- corrupted: skip it and tell the user to re-download it.
+
+Respect the user's long-term preferences returned by the tools: findings they marked as expected are suppressed,
+and subscriptions they chose to KEEP must not be recommended for cancellation.
 
 Email rules: draft a 'dispute' for each confirmed duplicate charge, a 'refund' for each charge after cancellation,
 and a 'cancellation' for free trials that silently converted to paid. Draft at most 4 emails, highest money first.
@@ -56,13 +67,21 @@ TOOLS = [
     T("set_merchant_category", "Set the category for a merchant based on evidence (e.g. a web lookup).",
       {"merchant_key": {"type": "string"}, "category": {"type": "string", "enum": categorize.CATEGORIES},
        "evidence": {"type": "string"}}, ["merchant_key", "category", "evidence"]),
-    T("ask_user", "Flag merchants/questions for the user to review in the app (non-blocking).",
-      {"question": {"type": "string"}, "merchant_keys": {"type": "array", "items": {"type": "string"}}},
-      ["question", "merchant_keys"]),
+    T("learn_csv_format", "Infer (with AI) and remember the column layout of a bank CSV whose format is unknown. "
+      "Call parse_statement again afterwards.", {"filename": {"type": "string"}}, ["filename"]),
+    T("ask_user", "Flag something for the user to handle in the app (non-blocking): reviewing low-confidence "
+      "categories, unlocking a password-protected PDF, or confirming a fact.",
+      {"question": {"type": "string"},
+       "kind": {"type": "string", "enum": ["category_review", "password", "confirmation"]},
+       "merchant_keys": {"type": "array", "items": {"type": "string"}},
+       "filename": {"type": "string", "description": "for kind=password: the locked file"}},
+      ["question", "kind", "merchant_keys", "filename"]),
     T("detect_subscriptions", "Detect recurring charges and classify subscriptions vs rent/SIP/bills."),
     T("detect_duplicates", "Find duplicate-charge candidates and have them judged; returns confirmed duplicates."),
     T("detect_price_changes", "Find price hikes on recurring charges, bank fee hikes, free-trial conversions, "
       "and charges after a remembered cancellation."),
+    T("upcoming_renewals", "Predict the next charge date and amount of every subscription (what renews in the "
+      "next 30 days), flagging recent price hikes and converted free trials."),
     T("build_budget", "Build a monthly budget with a savings target.",
       {"savings_target_pct": {"type": "number"},
        "cancel_merchants": {"type": "array", "items": {"type": "string"},
@@ -80,6 +99,17 @@ class Ctx:
         self.run_id, self.files, self.profile, self.savings_target = run_id, files, profile, savings_target
         self.rows, self.parsed, self.recurring, self.summary = [], set(), [], None
         self.questions = []
+        self.attempts, self.file_status = {}, {}
+        self._dismissals = None
+
+    def suppressed(self, kind, merchant, amount=None):
+        if self._dismissals is None:
+            self._dismissals = db.get_dismissals()
+        return db.dismissal_key(kind, merchant, amount) in self._dismissals or f"{kind}:{merchant}" in self._dismissals
+
+    def as_of(self):
+        """Statement 'today': the latest transaction date (keeps predictions meaningful on historical data)."""
+        return max((r["date"] for r in self.rows), default=db.now()[:10])
 
     def persist_rows(self):
         db.x("DELETE FROM transactions WHERE run_id=?", (self.run_id,))
@@ -120,11 +150,22 @@ def run_tool(ctx: Ctx, name, inp):
             return {"error": f"Unknown file {inp['filename']}"}
         if path in ctx.parsed:
             return {"note": "already parsed"}
+        ctx.attempts[path] = ctx.attempts.get(path, 0) + 1
         try:
             rows, quarantined = parsers.parse_file(path)
         except parsers.ParseError as e:
-            db.log(rid, "tool", "parse_failed", {"file": inp["filename"], "error": str(e)})
-            return {"error": str(e), "hint": "Skip this file, tell the user to re-download it; continue with other files."}
+            info = e.to_dict()
+            info["hint"] = {
+                "needs_password": "Call ask_user(kind='password', filename=...) and continue with the other files.",
+                "unknown_format": "Call learn_csv_format(filename), then parse_statement again.",
+                "corrupted": "Skip this file; tell the user to re-download it. Continue with the other files.",
+            }.get(e.code, "Skip this file and tell the user; continue with the other files.")
+            if ctx.attempts[path] > 2:
+                info["hint"] = "Already retried; skip this file and report it to the user."
+            db.log(rid, "tool", "parse_failed", {"file": inp["filename"], "error": str(e), "error_type": e.code})
+            ctx.file_status[inp["filename"]] = e.code
+            return info
+        ctx.file_status[inp["filename"]] = "ok"
         ctx.parsed.add(path)
         ctx.rows.extend(rows)
         for qr in quarantined:
@@ -163,22 +204,47 @@ def run_tool(ctx: Ctx, name, inp):
                 n += 1
         ctx.persist_rows()
         return {"updated": n}
+    if name == "learn_csv_format":
+        path = next((f for f in ctx.files if os.path.basename(f) == inp["filename"]), None)
+        if not path:
+            return {"error": f"Unknown file {inp['filename']}"}
+        try:
+            res = parsers.learn_csv_format(path)
+        except parsers.ParseError as e:
+            return e.to_dict() | {"hint": "Ask the user for a standard CSV export from their bank."}
+        return {"learned": True, "remembered_for_next_time": True, **res}
     if name == "ask_user":
         ctx.questions.append(inp)
         db.log(rid, "agent", "ask_user", inp)
+        if inp.get("kind") == "password":
+            db.log(rid, "agent", "needs_password", {"file": inp.get("filename"), "question": inp["question"]})
         return {"queued_for_user": True}
     if name == "detect_subscriptions":
         ctx.recurring = detectors.detect_recurring(ctx.rows)
+        decisions = db.get_sub_decisions()
         subs = [r for r in ctx.recurring if r["kind"] == "subscription"]
         for s in subs:
+            s["user_decision"] = decisions.get(s["merchant"])
+            s["next_expected"] = detectors.next_charge_date(s["last_charged"], s["day_of_month"])
             s["id"] = ctx.add_finding("subscription", s["merchant"], s["display"], s["latest_amount"], s)
         others = [{"merchant": r["display"], "kind": r["kind"], "amount": r["latest_amount"]} for r in ctx.recurring if r["kind"] != "subscription"]
-        return {"subscriptions": [{"finding_id": s["id"], "merchant": s["display"], "monthly": s["latest_amount"],
-                                   "amounts": s["amounts"], "annual": s["annual_cost"]} for s in subs],
+        return {"subscriptions": [{"finding_id": s["id"], "merchant": s["display"], "merchant_key": s["merchant"],
+                                   "monthly": s["latest_amount"], "amounts": s["amounts"], "annual": s["annual_cost"],
+                                   "user_decision": s["user_decision"]} for s in subs],
                 "subscription_total_monthly": sum(s["latest_amount"] for s in subs),
+                "user_chose_to_keep": [k for k, v in decisions.items() if v == "keep"],
                 "other_recurring_not_subscriptions": others}
+    if name == "upcoming_renewals":
+        if not ctx.recurring:
+            ctx.recurring = detectors.detect_recurring(ctx.rows)
+        flags = {f["merchant"]: f["kind"] for f in db.q(
+            "SELECT merchant, kind FROM findings WHERE run_id=? AND kind IN ('price_hike','trial_conversion','zombie_charge')", (rid,))}
+        ren = detectors.upcoming_renewals(ctx.recurring, as_of=ctx.as_of(), horizon_days=30, flags=flags)
+        return {"as_of": ctx.as_of(), "renewals": ren, "next_30_days_total": round(sum(r["amount"] for r in ren), 2)}
     if name == "detect_duplicates":
         dups, rejected = detectors.detect_duplicates(ctx.rows)
+        suppressed = [d for d in dups if ctx.suppressed("duplicate", d["merchant"], d["amount"])]
+        dups = [d for d in dups if d not in suppressed]
         for d in dups:
             d["id"] = ctx.add_finding("duplicate", d["merchant"], f"Duplicate {d['display']} charge", d["amount"], d)
         for d in rejected:
@@ -186,12 +252,21 @@ def run_tool(ctx: Ctx, name, inp):
         return {"confirmed_duplicates": [{"finding_id": d["id"], "merchant": d["display"], "date": d["date"],
                                           "amount": d["amount"], "reason": d["reason"]} for d in dups],
                 "rejected_candidates": [{"merchant": d["display"], "date": d["date"], "reason": d["reason"]} for d in rejected],
+                "suppressed_by_user_preference": [{"merchant": d["display"], "amount": d["amount"]} for d in suppressed],
                 "recoverable": sum(d["amount"] for d in dups)}
     if name == "detect_price_changes":
         if not ctx.recurring:
             ctx.recurring = detectors.detect_recurring(ctx.rows)
         hikes, trials, zombies = detectors.detect_price_changes(ctx.rows, ctx.recurring, db.get_cancellations())
-        out = {"price_hikes": [], "trial_conversions": [], "charges_after_cancellation": []}
+        sup = []
+        for kind_of, lst in (("price_hike", hikes), ("trial_conversion", trials), ("zombie_charge", zombies)):
+            for h in list(lst):
+                k = ("bank_fee_hike" if h.get("kind") == "bank_fee" else kind_of)
+                if ctx.suppressed(k, h["merchant"]):
+                    lst.remove(h)
+                    sup.append({"kind": k, "merchant": h["display"]})
+        out = {"price_hikes": [], "trial_conversions": [], "charges_after_cancellation": [],
+               "suppressed_by_user_preference": sup}
         for h in hikes:
             h["id"] = ctx.add_finding("bank_fee_hike" if h["kind"] == "bank_fee" else "price_hike", h["merchant"],
                                       f"{h['display']} +{h['pct']}%", h["new"] - h["old"], h)
@@ -207,9 +282,12 @@ def run_tool(ctx: Ctx, name, inp):
         f = db.q("SELECT kind, amount, merchant FROM findings WHERE run_id=?", (rid,))
         recoverable = sum(x["amount"] for x in f if x["kind"] in ("duplicate", "zombie_charge"))
         latest = {r["merchant"]: r["latest_amount"] for r in ctx.recurring}
-        cancel_monthly = sum(latest.get(m, 0) for m in inp.get("cancel_merchants", []))
+        keep = {k for k, v in db.get_sub_decisions().items() if v == "keep"}
+        cancel = [m for m in inp.get("cancel_merchants", []) if m not in keep]
+        cancel_monthly = sum(latest.get(m, 0) for m in cancel)
         b = budget_mod.build_budget(ctx.rows, inp.get("savings_target_pct") or ctx.savings_target, recoverable, cancel_monthly)
-        b["cancel_merchants"] = inp.get("cancel_merchants", [])
+        b["cancel_merchants"] = cancel
+        b["kept_by_user"] = sorted(keep & set(inp.get("cancel_merchants", [])))
         ctx.add_finding("budget", None, "Monthly budget", b["projected_savings"], b)
         return b
     if name == "draft_email":

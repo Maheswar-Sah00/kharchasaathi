@@ -32,14 +32,24 @@ def detect_recurring(rows):
     for m, months in monthly_series(rows).items():
         if len(months) < 2:
             continue
-        per_month = [len(v) for v in months.values()]
+        # identical charges within 2 days are one billing event (a duplicate is reported separately)
+        per_month = []
+        for v in months.values():
+            events = []
+            for r in sorted(v, key=lambda r: r["date"]):
+                if not any(e["amount"] == r["amount"] and abs((_d(r["date"]) - _d(e["date"])).days) <= 2 for e in events):
+                    events.append(r)
+            per_month.append(len(events))
         firsts = [sorted(v, key=lambda r: r["date"])[0] for _, v in sorted(months.items())]
         days = [_d(r["date"]).day for r in firsts]
         if max(per_month) > 2 or sorted(per_month)[len(per_month) // 2] != 1 or (max(days) - min(days)) > 6:
             continue
         amounts = [r["amount"] for r in firsts]
         paid = [a for a in amounts if a > TRIAL_MAX]
-        stable = len(set(paid)) <= 2
+        # stable = one price, or a single step change (a price hike) seen across >= 3 months.
+        # With only 2 months, two different amounts are just as likely random purchases -> not a subscription.
+        steps = sum(1 for a, b in zip(paid, paid[1:]) if a != b)
+        stable = len(set(paid)) == 1 or (len(paid) >= 3 and len(set(paid)) == 2 and steps == 1)
         cat = firsts[-1]["category"]
         if cat in SUB_CATS:
             kind = "subscription" if stable else "variable_bill"
@@ -121,3 +131,33 @@ def detect_price_changes(rows, recurring, cancellations=None, min_pct=5.0):
                 zombies.append(dict(merchant=m, display=t["merchant_display"], date=t["date"], amount=t["amount"],
                                     cancelled_on=cdate))
     return hikes, trials, zombies
+
+
+# ---------------------------------------------------------------- renewals
+def next_charge_date(last_charged, day_of_month):
+    """Next monthly charge after last_charged, on the same day of month (clamped to month end)."""
+    import calendar
+    d = _d(last_charged)
+    y, m = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
+    day = min(day_of_month, calendar.monthrange(y, m)[1])
+    return date(y, m, day).isoformat()
+
+
+def upcoming_renewals(recurring, as_of, horizon_days=30, flags=None):
+    """Subscriptions/bills expected to charge within horizon_days after as_of."""
+    flags = flags or {}
+    base = _d(as_of)
+    out = []
+    for r in recurring:
+        if r["kind"] not in ("subscription", "variable_bill", "bank_fee"):
+            continue
+        nxt = next_charge_date(r["last_charged"], r["day_of_month"])
+        while _d(nxt) <= base:  # roll forward if the statement ends after the last charge month
+            nxt = next_charge_date(nxt, r["day_of_month"])
+        days = (_d(nxt) - base).days
+        if days <= horizon_days:
+            out.append(dict(merchant=r["merchant"], display=r["display"], kind=r["kind"], date=nxt, in_days=days,
+                            amount=r["latest_amount"], source=r["source"],
+                            estimate=r["kind"] == "variable_bill", flag=flags.get(r["merchant"])))
+    out.sort(key=lambda x: x["date"])
+    return out

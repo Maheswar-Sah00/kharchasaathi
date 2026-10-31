@@ -17,7 +17,12 @@ CREATE TABLE IF NOT EXISTS drafts(id INTEGER PRIMARY KEY AUTOINCREMENT, run_id I
   intended_recipient TEXT, to_addr TEXT, subject TEXT, body TEXT, status TEXT, created_at TEXT, decided_at TEXT, provider_id TEXT);
 CREATE TABLE IF NOT EXISTS quarantine(id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INT, file TEXT, raw TEXT, reason TEXT);
 CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, run_id INT, actor TEXT, event TEXT, detail TEXT);
+CREATE TABLE IF NOT EXISTS csv_formats(signature TEXT PRIMARY KEY, mapping TEXT, source TEXT, example_file TEXT,
+  created_at TEXT, times_used INT DEFAULT 0);
+CREATE TABLE IF NOT EXISTS dismissals(key TEXT PRIMARY KEY, kind TEXT, merchant TEXT, amount REAL, reason TEXT, created_at TEXT);
+CREATE TABLE IF NOT EXISTS sub_decisions(merchant TEXT PRIMARY KEY, decision TEXT, note TEXT, created_at TEXT);
 """
+MEMORY_TABLES = ["corrections", "cancellations", "csv_formats", "dismissals", "sub_decisions"]
 
 
 def now():
@@ -83,8 +88,46 @@ def latest_run_id():
     return r["id"] if r else None
 
 
+def dismissal_key(kind, merchant, amount=None):
+    """A dismissal ('this is expected') matches future findings of the same kind+merchant (+amount for one-offs)."""
+    return f"{kind}:{merchant}" + (f":{round(float(amount), 2)}" if amount is not None and kind in ("duplicate",) else "")
+
+
+def get_dismissals():
+    return {r["key"]: r for r in q("SELECT * FROM dismissals")}
+
+
+def save_dismissal(kind, merchant, amount=None, reason=""):
+    k = dismissal_key(kind, merchant, amount)
+    x("INSERT INTO dismissals(key,kind,merchant,amount,reason,created_at) VALUES(?,?,?,?,?,?) "
+      "ON CONFLICT(key) DO UPDATE SET reason=excluded.reason, created_at=excluded.created_at",
+      (k, kind, merchant, amount, reason, now()))
+    log(None, "user", "finding_dismissed", {"key": k, "reason": reason})
+    return k
+
+
+def get_sub_decisions():
+    return {r["merchant"]: r["decision"] for r in q("SELECT * FROM sub_decisions")}
+
+
+def save_sub_decision(merchant, decision, note=""):
+    x("INSERT INTO sub_decisions(merchant,decision,note,created_at) VALUES(?,?,?,?) "
+      "ON CONFLICT(merchant) DO UPDATE SET decision=excluded.decision, note=excluded.note, created_at=excluded.created_at",
+      (merchant, decision, note, now()))
+    log(None, "user", "subscription_decision", {"merchant": merchant, "decision": decision})
+
+
+def forget(table, key):
+    pk = {"corrections": "merchant", "cancellations": "merchant", "csv_formats": "signature",
+          "dismissals": "key", "sub_decisions": "merchant"}
+    if table not in pk:
+        raise ValueError("unknown memory type")
+    x(f"DELETE FROM {table} WHERE {pk[table]}=?", (key,))
+    log(None, "user", "memory_forgotten", {"type": table, "key": key})
+
+
 def reset_all():
     with conn() as c:
-        for t in ["runs", "transactions", "corrections", "cancellations", "findings", "drafts", "quarantine", "audit_log"]:
+        for t in ["runs", "transactions", "findings", "drafts", "quarantine", "audit_log"] + MEMORY_TABLES:
             c.execute(f"DELETE FROM {t}")
         c.commit()

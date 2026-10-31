@@ -1189,6 +1189,9 @@
   "corrupted_files": [
     "card_statement_nova_2026_07_partial.pdf"
   ],
+  "pdf_passwords": {
+    "card_statement_nova_2026_10.pdf": "ARJU1402"
+  },
   "user_profile": {
     "name": "Arjun Mehta",
     "age": 24,
