@@ -138,6 +138,9 @@ def run(req: RunReq):
         except Exception as e:  # surface, never crash the stream
             q.put({"type": "error", "text": f"{type(e).__name__}: {e}"})
             q.put({"type": "final", "text": "", "run_id": db.latest_run_id(), "questions": [], "llm_calls": llm.CALLS["n"]})
+        else:
+            # a renewal close by? phone the user now, without holding up the audit screen
+            threading.Thread(target=api_reminders.reminders.after_audit, args=(api_reminders.NAME,), daemon=True).start()
         finally:
             _run_lock.release()
 

@@ -1,6 +1,6 @@
 /* Transactions: every row the agent read, how it sorted each one, and the place to teach it.
    A category change is saved per shop (merchant) and remembered for the next audit. */
-import { html, raw, esc, mount, api, store, fmt, KIND, SOURCE_LABEL, tip, toast, on, $, $$ } from '../core.js';
+import { html, raw, esc, mount, api, store, fmt, plain, KIND, SOURCE_LABEL, tip, toast, on, $, $$ } from '../core.js';
 
 export const title = 'Transactions';
 
@@ -27,7 +27,7 @@ const PICKS = [
 const MONTH_LONG = (ym) => fmt.month(ym, true);
 
 /* filters, pending fixes and open rows survive a re-render */
-const ui = { q: '', filter: 'all', month: 'all', src: 'all', changes: {}, open: {}, saving: false, confirm: null, forgetting: false };
+const ui = { q: '', filter: 'all', months: {}, changes: {}, open: {}, saving: false, confirm: null, forgetting: false };
 
 const pretty = (key) => String(key || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -45,10 +45,10 @@ function emptyView(hasRun) {
   return html`<div class="page"><header class="rv-head">
       <p class="rv-crumb"><a href="#/report">Your report</a><span class="sep">/</span><span class="now">Transactions</span></p>
       <h1 class="h1">No transactions yet.</h1>
-      <p class="lead">${hasRun ? 'Your last audit did not read any transactions, so there is nothing to show here. Run it again.' : 'Run an audit first. KharchaSaathi will read your bank and card statements, list every transaction here, and show you how it sorted each one. You can fix any category, and it will remember.'}</p>
+      <p class="lead">${hasRun ? 'Your last audit did not read any transactions, so there is nothing to show here. Run it again.' : 'Run an audit first.'}</p>
       <div class="rv-empty-actions"><a class="btn btn-primary" href="#/start">Start an audit <span aria-hidden="true">→</span></a><a class="btn btn-secondary" href="#/how">How it works</a></div>
     </header>
-    <div class="rv-ghost" aria-hidden="true"><div class="rv-ghost-note">${ic('search')} Your transactions will appear here.</div>${[0, 1, 2, 3].map(() => html`<div class="row-g"><i></i><i></i><i></i></div>`)}</div>
+    <div class="rv-ghost" aria-hidden="true">${[0, 1, 2, 3].map(() => html`<div class="row-g"><i></i><i></i><i></i></div>`)}</div>
   </div>`;
 }
 
@@ -71,7 +71,7 @@ function plainAskCard(q, s) {
     <span class="rv-bubble">${ic('chat')}</span>
     <div>
       <div class="rv-ask-over">The agent asked you</div>
-      <p class="rv-ask-facts rv-ask-plain">${q.question}</p>
+      <p class="rv-ask-facts rv-ask-plain">${plain(q.question)}</p>
       ${canShow ? html`<div class="rv-picks"><button class="rv-pick" data-show-look>Show what needs a look</button></div>` : ''}
     </div>
   </section>`;
@@ -123,7 +123,7 @@ function sourceCard(tx) {
   const top = shown.slice().sort((a, b) => counts[b] - counts[a])[0];
   return html`<div class="card">
     <div class="rv-card-head"><div><h2 class="title">How each one was sorted</h2>
-      <p>Most were shops it already knew. The AI guessed the rest. Your own fixes always come first.</p></div></div>
+      <p>Your own fixes always come first.</p></div></div>
     <div class="rv-stack" role="img" aria-label="${shown.map((k) => `${SOURCE_LABEL[k] || k}: ${counts[k]}`).join(', ')}">
       ${shown.map((k, i) => html`<i class="${srcCls(k)}" style="flex:${counts[k]} 1 0;--d:${i * 90}ms" data-tip="${`<div class="tip-title">${esc(SOURCE_LABEL[k] || k)}</div><div class="tip-row"><span>Transactions</span><b>${counts[k]}</b></div><div class="tip-row"><span>Share</span><b>${fmt.pct((counts[k] / n) * 100, 1)}</b></div>`}"></i>`)}
     </div>
@@ -131,7 +131,6 @@ function sourceCard(tx) {
       ${keys.map((k) => html`<div class="${srcCls(k)} ${counts[k] ? '' : 'is-zero'}"><i></i><b>${SOURCE_LABEL[k] || k}</b>
         <span><strong>${fmt.n(counts[k])}</strong>${counts[k] ? fmt.pct((counts[k] / n) * 100, counts[k] / n < 0.01 ? 1 : 0) : 'none'}</span></div>`)}
     </div>
-    <p class="tiny" style="margin:16px 0 0">${top ? `Point at the bar for exact numbers.` : ''}</p>
   </div>`;
 }
 
@@ -191,7 +190,7 @@ function memoryList(s, mem) {
 function memoryCard(s, mem) {
   return html`<div class="card">
     <div class="rv-card-head"><div><h2 class="title">What it remembers</h2>
-      <p>What it carries from one audit to the next, saved on this computer. Your fixes come before any rule or AI guess. Forget anything you like.</p></div></div>
+      <p>Saved on this computer. Forget anything you like.</p></div></div>
     <div data-mem>${memoryList(s, mem)}</div>
     ${mem && mem.pdf_passwords ? html`<p class="rv-mem-pw" style="margin-bottom:0">${ic('lock')}<span>Statement passwords are never saved. An unlocked file stays open only until the app restarts.</span></p>` : ''}
   </div>`;
@@ -208,8 +207,6 @@ function filterRows(tx, askKeys) {
     if (ui.filter === 'look' && !needsLook(t, askKeys)) return false;
     if (ui.filter === 'in' && t.direction !== 'CR') return false;
     if (ui.filter === 'out' && t.direction !== 'DR') return false;
-    if (ui.month !== 'all' && t.date.slice(0, 7) !== ui.month) return false;
-    if (ui.src !== 'all' && t.cat_source !== ui.src) return false;
     if (q && !`${t.merchant_display} ${t.display_description} ${t.category}`.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -235,13 +232,15 @@ function flagDetail(t) {
 function rowsHtml(rows, cats) {
   if (!rows.length) return html`<tr class="rv-noresults"><td colspan="5">Nothing matches these filters. <button data-act="clear">Clear filters</button></td></tr>`;
   const months = [...new Set(rows.map((t) => t.date.slice(0, 7)))];
-  return html`${months.map((m) => {
+  const narrowed = !!ui.q.trim() || ui.filter !== 'all';
+  return html`${months.map((m, mi) => {
+    const open = narrowed || (ui.months[m] ?? mi === 0);
     const list = rows.filter((t) => t.date.slice(0, 7) === m);
     const out = list.filter((t) => t.direction === 'DR').reduce((a, t) => a + t.amount, 0);
     const inn = list.filter((t) => t.direction === 'CR').reduce((a, t) => a + t.amount, 0);
-    return html`<tr class="rv-monthrow"><td colspan="5"><div class="rv-mrow-in"><b>${MONTH_LONG(m)}</b>
-        <span>${fmt.plural(list.length, 'transaction')} · ${fmt.inr(out)} out${inn ? ` · ${fmt.inr(inn)} in` : ''}</span></div></td></tr>
-      ${list.map((t) => {
+    return html`<tr class="rv-monthrow"><td colspan="5"><button class="rv-mrow-in" data-month="${m}" aria-expanded="${open}" ${narrowed ? 'disabled' : ''}><b>${MONTH_LONG(m)}</b>
+        <span>${fmt.plural(list.length, 'transaction')} · ${fmt.inr(out)} out${inn ? ` · ${fmt.inr(inn)} in` : ''}</span>${narrowed ? '' : ic('chev', 'rv-mrow-chev')}</button></td></tr>
+      ${!open ? '' : list.map((t) => {
         const flag = t.flags === 'prompt_injection';
         const changed = ui.changes[t.merchant] != null;
         const conf = Math.round((t.confidence ?? 1) * 100);
@@ -260,27 +259,17 @@ function rowsHtml(rows, cats) {
 }
 
 function controls(tx, askKeys) {
-  const months = [...new Set(tx.map((t) => t.date.slice(0, 7)))].sort();
   const cnt = {
     all: tx.length,
     look: tx.filter((t) => needsLook(t, askKeys)).length,
     in: tx.filter((t) => t.direction === 'CR').length,
     out: tx.filter((t) => t.direction === 'DR').length,
   };
-  const srcs = SRC_ORDER.filter((k) => tx.some((t) => t.cat_source === k));
   return html`<div class="rv-ctl" role="search">
     <label class="rv-search">${ic('search')}<span class="sr-only">Search</span><input type="search" data-q placeholder="Search a shop or description" value="${ui.q}" autocomplete="off" /></label>
     <div class="seg" role="tablist" aria-label="Show">
       ${[['all', 'All'], ['look', 'Needs a look'], ['in', 'Money in'], ['out', 'Money out']].map(([k, l]) => html`<button role="tab" aria-selected="${ui.filter === k}" class="${ui.filter === k ? 'is-active' : ''}" data-filter="${k}">${l}<span class="rv-n">${cnt[k]}</span></button>`)}
     </div>
-    <div class="rv-chips" role="group" aria-label="Month">
-      <button class="chip ${ui.month === 'all' ? 'is-active' : ''}" data-month="all">All months</button>
-      ${months.map((m) => html`<button class="chip ${ui.month === m ? 'is-active' : ''}" data-month="${m}">${fmt.month(m)}</button>`)}
-    </div>
-    <select class="select rv-mini" data-src aria-label="How it was sorted">
-      <option value="all" ${ui.src === 'all' ? 'selected' : ''}>Any way of sorting</option>
-      ${srcs.map((k) => html`<option value="${k}" ${ui.src === k ? 'selected' : ''}>${SOURCE_LABEL[k] || k}</option>`)}
-    </select>
     <span class="rv-ctl-meta" data-meta></span>
   </div>`;
 }
@@ -291,7 +280,7 @@ function pageView(s, mem) {
     <header class="rv-head">
       <p class="rv-crumb"><a href="#/report">Your report</a><span class="sep">/</span><span class="now">Transactions</span></p>
       <h1 class="h1">${fmt.n(tx.length)} transactions, sorted.</h1>
-      <p class="lead">Every row the agent read from your bank and card statements, and how it sorted each one. See something wrong? Change the category. <b>KharchaSaathi remembers your fix</b> and uses it first next time.</p>
+      <p class="lead">Change any category and it is remembered next time.</p>
     </header>
     ${(s.questions || []).map((q) => askCard(q, s))}
     <div class="rv-tx-top">${sourceCard(tx)}${memoryCard(s, mem)}</div>
@@ -333,7 +322,7 @@ export async function render(root) {
     const body = $('[data-rows]', wrap);
     if (body) mount(body, rowsHtml(rows, S.categories || []));
     const meta = $('[data-meta]', wrap);
-    const filtered = ui.q || ui.filter !== 'all' || ui.month !== 'all' || ui.src !== 'all';
+    const filtered = ui.q || ui.filter !== 'all';
     if (meta) mount(meta, html`Showing ${fmt.n(rows.length)} of ${fmt.n((S.transactions || []).length)}${filtered ? html`<button data-act="clear">Clear</button>` : ''}`);
   };
 
@@ -378,11 +367,9 @@ export async function render(root) {
     const act = t.dataset.act;
     if (act === 'reload') { store.invalidate(); return; }
     if (act === 'clear') {
-      Object.assign(ui, { q: '', filter: 'all', month: 'all', src: 'all' });
+      Object.assign(ui, { q: '', filter: 'all' });
       const q = $('[data-q]', wrap); if (q) q.value = '';
-      const sr = $('[data-src]', wrap); if (sr) sr.value = 'all';
       $$('[data-filter]', wrap).forEach((b) => b.classList.toggle('is-active', b.dataset.filter === 'all'));
-      $$('[data-month]', wrap).forEach((b) => b.classList.toggle('is-active', b.dataset.month === 'all'));
       renderRows(); return;
     }
     if (act === 'flag') { const id = t.dataset.id; ui.open[id] = !ui.open[id]; tip.hide(); renderRows(); return; }
@@ -411,11 +398,11 @@ export async function render(root) {
       renderRows();
     }),
     on(wrap, 'click', '[data-month]', (e, t) => {
-      ui.month = t.dataset.month;
-      $$('[data-month]', wrap).forEach((b) => b.classList.toggle('is-active', b === t));
+      const m = t.dataset.month;
+      ui.months[m] = t.getAttribute('aria-expanded') !== 'true';
       renderRows();
+      const again = $(`[data-month="${m}"]`, wrap); if (again) again.focus({ preventScroll: true });
     }),
-    on(wrap, 'change', '[data-src]', (e, t) => { ui.src = t.value; renderRows(); }),
     on(wrap, 'change', '.rv-cat', (e, t) => {
       const m = t.dataset.merchant;
       const orig = (S.transactions.find((x) => x.merchant === m) || {}).category;

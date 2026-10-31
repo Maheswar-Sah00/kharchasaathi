@@ -80,9 +80,9 @@ function renderFooter() {
   mount($('#footer'), html`
     <div class="page page-wide footer-inner">
       <div class="row">${MARK}<div><div style="font-weight:600;letter-spacing:-.01em">KharchaSaathi</div>
-        <div class="tiny">Demo data is made up. The agent can only draft emails. You send them.</div></div></div>
+        <div class="tiny">Demo data is made up.</div></div></div>
       <div class="row-wrap tiny" style="gap:20px">
-        <a href="#/proof">Proof</a><a href="#/log">Activity log</a><a href="/web/call.html">Reminder calls</a><a href="/legacy">Old dashboard</a>
+        <a href="#/proof">Proof</a><a href="#/log">Activity log</a><a href="/web/call.html">Reminder calls</a>
         <button class="tiny" id="reset-demo" style="color:var(--ink-3)">Reset demo data</button>
       </div>
     </div>`);

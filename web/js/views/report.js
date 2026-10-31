@@ -1,15 +1,14 @@
 /* KharchaSaathi - Your report (#/report)
    The results page: verdict headline, four numbers, the money calendar with
    a "What to do" panel (and the actions you can take there), what charges you
-   next, the plan in four charts, things that need your eyes, and the agent's
-   own summary.
+   next, the plan in four charts, and the things that need your eyes.
 
    Data: /api/state is required. /api/findings, /api/renewals, /api/runs/compare,
    /api/insights and /api/memory add to it, and the page still works without them.
    Actions only ever write drafts or remember a choice. Nothing here can send an
    email or move money: sending happens in Emails, after the person approves.   */
-import { html, raw, mount, $, $$, on, api, store, summarize, fmt, GROUP, KIND, md, reveal, navigate, toast } from '../core.js';
-import { hbars, slope, segbar, calendar, tipCard, bindTips, whenVisible, finishAll, count, reducedMotion } from '../charts.js';
+import { html, raw, mount, $, $$, on, api, store, summarize, fmt, plain, GROUP, KIND, reveal, navigate, toast } from '../core.js';
+import { hbars, segbar, calendar, tipCard, bindTips, whenVisible, finishAll, count, reducedMotion } from '../charts.js';
 
 export const title = 'Your report';
 
@@ -25,11 +24,6 @@ const money = (n) => fmt.inr(n, Number(n) % 1 ? 2 : 0);
 const ordinal = (d) => `${d}${['th', 'st', 'nd', 'rd'][d % 10 > 3 || [11, 12, 13].includes(d) ? 0 : d % 10]}`;
 const andList = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
 const plural = (n, one, many) => `${word(n)} ${n === 1 ? one : many || `${one}s`}`;
-const CAT_SHORT = {
-  'Entertainment & Subscriptions': 'Fun & subscriptions', 'Food & Dining': 'Food & eating out', 'Utilities & Bills': 'Bills & internet',
-  'Health & Fitness': 'Health & fitness', 'Cash Withdrawal': 'Cash withdrawals', 'Fees & Charges': 'Bank fees',
-};
-const catName = (c) => CAT_SHORT[c] || c;
 const BADGE = { back: 'badge-blue', stop: 'badge-orange', up: 'badge-bad', keep: '', subs: '' };
 const C = {
   back: 'var(--c-blue)', stop: 'var(--c-orange)', up: 'var(--c-red)', upOld: 'var(--c-red-2)', keep: 'var(--ink-4)', subs: 'var(--ink-4)', flag: 'var(--ink)',
@@ -367,12 +361,11 @@ function emptyView() {
       ${emptyCal()}
       <p class="eyebrow">Your report</p>
       <h1 class="h1">No report yet</h1>
-      <p class="lead">Run an audit on three months of statements, or watch a recorded one. Your plan, your charts and the emails to send will show up here.</p>
+      <p class="lead">Run an audit, or watch a recorded one.</p>
       <div class="row-wrap rp-empty-actions">
         <a class="btn btn-primary btn-lg" href="#/start">Start an audit <span aria-hidden="true">→</span></a>
         <a class="btn btn-secondary btn-lg" href="#/run?mode=replay">${I.play} Watch a recorded run</a>
       </div>
-      <p class="tiny">Demo data is made up. Nothing is ever sent without your approval.</p>
     </div>
   </section></div>`;
 }
@@ -402,18 +395,6 @@ function verdict(M) {
       : M.moneyBack > 0 ? html`Everything else can stay.` : html`Nothing to fix this time.`;
   return html`<span class="rp-line">${a}</span> <span class="rp-line">${b}</span>`;
 }
-function summaryText(M) {
-  const { S, b, months } = M;
-  const out = [];
-  if (months.length) out.push(`Between ${fmt.month(months[0], true).split(' ')[0]} and ${fmt.month(months[months.length - 1], true).split(' ')[0]}, ${fmt.n(M.debits.length)} payments left your accounts.`);
-  if (S.subs.length) out.push(`You pay for ${S.subs.length} ${S.subs.length === 1 ? 'subscription' : 'subscriptions'}, ${fmt.inr(S.subsMonthly)} a month.`);
-  if (M.hikes.length) out.push(`${cap1(word(M.hikes.length))} ${M.hikes.length === 1 ? 'price' : 'prices'} went up, so you now pay ${fmt.inr(M.hikesYearly)} more a year.`);
-  if (b) {
-    out.push(`You save ${pct1(b.current_savings_pct)} of your income today.`);
-    if (b.projected_savings_pct > b.current_savings_pct + 0.05) out.push(`This plan takes you to ${pct1(b.projected_savings_pct)}, or ${fmt.inr(b.projected_savings)} a month.`);
-  }
-  return out.join(' ');
-}
 function period(months) {
   if (!months.length) return '';
   const a = months[0], z = months[months.length - 1];
@@ -436,7 +417,6 @@ function heroTpl(M) {
   return html`<section class="page page-wide rp-hero">
     <p class="eyebrow rp-eyebrow reveal">Your report <span aria-hidden="true">·</span> ${(s.profile && s.profile.name) || 'You'} <span aria-hidden="true">·</span> ${period(M.months)}</p>
     <h1 class="rp-verdict reveal" style="--d:60ms">${verdict(M)}</h1>
-    <p class="lead rp-lead reveal" style="--d:140ms">${summaryText(M)}</p>
     <div class="row-wrap rp-meta reveal" style="--d:200ms">
       <span class="badge rp-badge-ok">${I.check}Based on ${fmt.n(M.tx.length)} transactions from ${M.nFiles} ${M.nFiles === 1 ? 'statement' : 'statements'}</span>
       ${M.skipped.length ? html`<button class="badge badge-warn" data-jump="rp-eyes">${M.skipped.length} ${M.skipped.length === 1 ? 'file' : 'files'} skipped</button>` : ''}
@@ -484,7 +464,7 @@ function statsTpl(M) {
       <div class="rp-stat">
         <div class="rp-stat-label"><i style="background:${raw(C.save)}"></i>You save</div>
         <div class="rp-stat-value"><span data-count="${now}" data-fmt="pct">0%</span><span class="rp-arrow" aria-hidden="true">→</span><span data-count="${plan}" data-fmt="pct">0%</span></div>
-        <p class="rp-stat-sub">Of your income each month. Today, and with this plan.</p>
+        <p class="rp-stat-sub">Of your income, today and with this plan.</p>
         <div class="rp-stat-bar" data-bar="save"></div>
       </div>
     </div>
@@ -564,7 +544,7 @@ function sinceTpl(M) {
       ...goneS.map((f) => li(C.keep, `${f.title}, no charge seen this time`, `${fmt.inr(f.amount)}/mo`)),
       ...goneFiles.map((f) => li('var(--ink)', `${f}, not in this audit`)),
     ]),
-    col('How your spending changed', spend.map((x) => li(x.change > 0 ? C.up : C.save, catName(x.category), signed(x.change))), added ? 'You added statements, so some totals grew for that reason.' : ''),
+    col('How your spending changed', spend.map((x) => li(x.change > 0 ? C.up : C.save, x.category, signed(x.change))), added ? 'You added statements, so some totals grew for that reason.' : ''),
     did.length ? html`<div class="rp-since-col"><p class="overline">What you did</p>${did.map((d) => html`<p class="small">${d}</p>`)}</div>` : '',
   ].filter(Boolean);
   return html`<section class="page page-wide rp-since-sec">
@@ -603,7 +583,6 @@ function mapTpl(M, ui) {
         <p class="eyebrow">Where your money went</p>
         <h2 class="h2">Three months, one dot for every payment.</h2>
       </div>
-      <p class="body rp-sec-aside">Every payment that left your accounts, on the day it left. Point at a dot to see what it was.</p>
     </div>
     <div class="rp-map-grid reveal" style="--d:80ms">
       <div class="card rp-cal-card">
@@ -666,11 +645,11 @@ function nextTpl(M) {
   return html`<section class="page page-wide rp-sec" id="rp-next">
     <div class="rp-sec-head reveal">
       <div><p class="eyebrow">Coming up</p><h2 class="h2">What will charge you next</h2></div>
-      <p class="body rp-sec-aside">Your last statement ends on ${fmt.date(R.as_of)}. These are the charges we expect in the ${HORIZON} days after it.</p>
+      <p class="body rp-sec-aside">Counted from your last statement, ${fmt.date(R.as_of)}.</p>
     </div>
     <div class="card rp-next reveal">
       <div class="rp-next-sum">
-        <p class="overline">${HORIZON} days after your last statement</p>
+        <p class="overline">Next ${HORIZON} days</p>
         <div class="rp-next-num">${guesses ? html`<small>About</small> ` : ''}${fmt.inr(total)}</div>
         <p class="small">${cap1(plural(list.length, 'charge'))} expected${guesses ? `. ${cap1(word(guesses))} ${guesses === 1 ? 'is a guess' : 'are guesses'}` : ''}.</p>
         ${nudge ? html`<p class="rp-next-nudge">${nudge}</p>` : ''}
@@ -709,7 +688,6 @@ function chartsTpl(M) {
   if (!b) return '';
   const sorted = [...M.lines].sort((p, q) => q.avg_spend - p.avg_spend);
   const rent = sorted[1] && sorted[0].avg_spend > 2.2 * sorted[1].avg_spend ? sorted[0] : null;
-  const nCut = M.cutCats.size, nKeep = M.lines.length - nCut;
   const afterStop = S.subsMonthly - M.stopKeys.reduce((a, m) => a + ((M.subBy.get(m) || {}).latest_amount || 0), 0);
   const stopNames = andList(M.stopKeys.map((m) => M.name(m)));
   const gap = Math.max(0, b.savings_target - b.current_savings);
@@ -719,18 +697,18 @@ function chartsTpl(M) {
   return html`<section class="page page-wide rp-sec" id="rp-plan">
     <div class="rp-sec-head reveal">
       <div><p class="eyebrow">Your budget</p><h2 class="h2">The plan in four charts</h2></div>
-      <p class="body rp-sec-aside">How you spend now, what the plan changes, and where the extra savings come from. <span class="rp-hint">Point at a bar for its numbers.</span></p>
     </div>
     ${changed.length ? html`<p class="rp-plan-note">${I.history}<span>You changed your mind on ${andList(changed)}. These charts show the plan from your last audit. Your next audit will use your choice.</span><a class="link-arrow" href="#/start">Start an audit</a></p>` : ''}
     <div class="rp-charts">
-      ${chartCard('cats', 'Where your money goes each month', 'Each bar is what you spend in a month, on average. The black tick is your new budget.',
+      ${chartCard('cats', 'Where your money goes each month', 'Each bar is what you spend in a month, on average. The tick is your new budget.',
         [key([C.trim, C.stop], 'Cut by the plan', 'two'), key(C.bar, 'Stays the same'), key(null, 'New budget', 'tick')], '',
-        rent ? `${catName(rent.category)} (${fmt.inr(rent.avg_spend)}) is drawn shorter so the rest fit.` : '')}
+        rent ? `${rent.category} (${fmt.inr(rent.avg_spend)}) is drawn shorter so the rest fit.` : '')}
       ${chartCard('subs', 'What you pay every month', `Each bar is one subscription. Together they cost ${fmt.inr(S.subsMonthly)} a month.`,
         [M.stopKeys.length ? key(C.stop, 'Stop paying') : '', M.hikes.length ? key([C.upOld, C.up], 'Price went up (pale = old price)', 'two') : '', key(C.bar, 'Keep')],
         html`<div class="rp-cc-fig"><b>${fmt.inr(S.subsMonthly)}</b><span>a month</span></div>`,
         M.stopKeys.length ? `Stopping ${stopNames} brings this down to ${fmt.inr(afterStop)} a month.` : '')}
-      ${chartCard('slope', 'Now vs your new budget', `Each line is a part of your spending the plan trims. ${nKeep ? `The other ${word(nKeep)} stay the same.` : ''}`, '', '', '')}
+      ${monthRows(M).length ? chartCard('months', 'Your income, month by month', `Where each month’s ${fmt.inr(b.monthly_income)} went, and what the plan changes.`,
+        [key(C.bar, 'Needs'), key(C.trim, 'Wants'), key(C.save, 'Saved')]) : ''}
       ${chartCard('save', 'Where the savings come from',
         gap <= 0 ? 'You already save more than your goal.'
           : reached ? `To save ${fmt.inr(b.savings_target)} a month you need ${fmt.inr(gap)} more. This is where it comes from.`
@@ -752,7 +730,7 @@ function eyesTpl(M) {
         <div class="rp-eye-icon">${I.question}</div>
         <p class="overline">A question for you</p>
         <h3 class="rp-eye-title">The agent has a question</h3>
-        <p class="small">${q.question}</p>
+        <p class="small">${plain(q.question)}</p>
         <a class="btn btn-secondary btn-sm" href="#/transactions">Look in Transactions <span aria-hidden="true">→</span></a>
       </article>`);
       return;
@@ -820,30 +798,17 @@ function eyesTpl(M) {
   return html`<section class="page page-wide rp-sec" id="rp-eyes">
     <div class="rp-sec-head reveal">
       <div><p class="eyebrow">Before you act</p><h2 class="h2">Needs your eyes</h2></div>
-      <p class="body rp-sec-aside">A few things the agent could not decide alone, and a few it chose not to do.</p>
     </div>
     <div class="rp-eyes reveal" data-n="${Math.min(cards.length, 4)}">${cards}</div>
   </section>`;
 }
 
-function wordsTpl(M, ui) {
-  const text = String((M.s.run && M.s.run.summary) || '').replace(/\p{Extended_Pictographic}️?\s?/gu, '');
-  const links = html`<nav class="rp-links" aria-label="More">
+function linksTpl() {
+  return html`<section class="page page-wide rp-sec rp-words-sec"><nav class="rp-links" aria-label="More">
     <a class="link-arrow" href="#/transactions">All transactions</a>
     <a class="link-arrow" href="#/log">Activity log</a>
     <a class="link-arrow" href="#/proof">How well it works</a>
-  </nav>`;
-  const on1 = M.s.run && M.s.run.started_at ? ` on ${fmt.date(M.s.run.started_at.slice(0, 10))}` : '';
-  return html`<section class="page page-wide rp-sec rp-words-sec">
-    ${text.trim() ? html`<details class="card rp-words reveal" data-words ${ui.wordsOpen ? 'open' : ''}>
-      <summary>
-        <span class="rp-words-label"><span class="eyebrow">Written by the agent${on1}</span><span class="h3">In the agent’s own words</span></span>
-        <span class="rp-words-chev" aria-hidden="true">${I.chev}</span>
-      </summary>
-      <div class="rp-words-md"><p class="tiny rp-words-note">This is what the agent wrote when the audit finished. Anything you did after that is not in it.</p><div class="md">${md(text)}</div></div>
-    </details>` : ''}
-    ${links}
-  </section>`;
+  </nav></section>`;
 }
 
 /* =====================================================================
@@ -867,7 +832,7 @@ function dotNote(view, d, M) {
   const t = d.t;
   if (view === 'plan') {
     if (M.stopSet.has(t.merchant)) return { text: 'The plan stops this.', c: C.stop };
-    if (M.cutCats.has(t.category)) return { text: `The plan spends a bit less on ${catName(t.category).toLowerCase()}.`, c: C.trim };
+    if (M.cutCats.has(t.category)) return { text: `The plan spends a bit less on ${t.category.toLowerCase()}.`, c: C.trim };
     return { text: 'Stays as it is.', c: C.keep };
   }
   const n = M.note.get(t.id);
@@ -887,7 +852,7 @@ function itemsFor(view, M) {
     const t = d.t, n = dotNote(view, d, M);
     return {
       id: String(t.id), key: t.merchant, date: t.date, amount: t.amount, name: t.merchant_display, color: dotColor(view, d, M), pick: M.rowByTx.has(String(t.id)),
-      tip: tipCard({ title: `${t.merchant_display} · ${fmt.date(t.date)}`, value: money(t.amount), unit: `${t.source === 'card' ? 'Card' : 'Bank'} · ${catName(t.category)}`, note: n && n.text, key: n && n.c }),
+      tip: tipCard({ title: `${t.merchant_display} · ${fmt.date(t.date)}`, value: money(t.amount), unit: `${t.source === 'card' ? 'Card' : 'Bank'} · ${t.category}`, note: n && n.text, key: n && n.c }),
     };
   });
 }
@@ -936,7 +901,7 @@ function stripDefault(view, M, items, cls) {
       figs: [['A typical payment', fmt.inr(median), 'Half of your payments are smaller than this.'], ['The biggest payment', big ? money(big.amount) : '', big ? `${big.merchant_display}${bigN > 1 ? ', every month' : `, on ${fmt.date(big.date)}`}.` : '']],
     },
     subs: {
-      name: 'Monthly charges', lead: S.subs.length ? `Your ${plural(S.subs.length, 'subscription')} ${S.subs.length === 1 ? 'charges' : 'charge'} you on about the same day every month. Point at one to see it light up in every month.` : 'No monthly subscriptions were found.',
+      name: 'Monthly charges', lead: S.subs.length ? `Your ${plural(S.subs.length, 'subscription')} ${S.subs.length === 1 ? 'charges' : 'charge'} you on about the same day every month.` : 'No monthly subscriptions were found.',
       figs: [['Every month', fmt.inr(S.subsMonthly), S.subs.length ? `${cap1(plural(S.subs.length, 'subscription'))} together.` : 'Nothing to pay.'], ['Every year', fmt.inr(S.subsYearly), 'The same charges, over 12 months.']],
     },
     problems: {
@@ -1049,13 +1014,13 @@ function drawCharts(root, M, cleanups) {
     cleanups.push(hbars(elA, lines.map((l) => {
       const cut = l.change < 0;
       return {
-        key: l.category, label: catName(l.category), tick: l.budget,
+        key: l.category, label: l.category, tick: l.budget,
         parts: cut ? [{ value: l.budget, color: C.trim }, { value: -l.change, color: C.stop }] : [{ value: l.avg_spend, color: C.bar }],
         valueText: cut ? html`${fmt.inr(l.avg_spend)} <small>→ ${fmt.inr(l.budget)}</small>` : fmt.inr(l.avg_spend),
         aria: `${l.category}: ${fmt.inr(l.avg_spend)} a month now${cut ? `, budget ${fmt.inr(l.budget)}` : ', stays the same'}`,
         tip: tipCard({ title: l.category, value: fmt.inr(l.avg_spend), unit: 'a month on average', rows: [['New budget', fmt.inr(l.budget)], ['Change', l.change ? `−${fmt.inr(-l.change)}` : 'None'], ...monthRows(l.category)], note: cut ? (l.category === 'Entertainment & Subscriptions' && M.planStopMonthly ? `Includes stopping ${planNames} (${fmt.inr(M.planStopMonthly)}).` : 'The plan trims this a little.') : (l.type === 'need' ? 'A need. The plan keeps it.' : 'The plan keeps it.'), key: cut ? C.stop : C.bar }),
       };
-    }), { max: maxA, labelWidth: 156, valueWidth: 124, barHeight: 12, rowHeight: 32 }).destroy);
+    }), { max: maxA, labelWidth: 196, valueWidth: 124, barHeight: 12, rowHeight: 32 }).destroy);
   }
   /* b) subscriptions */
   const elB = $('[data-chart="subs"]', root);
@@ -1074,20 +1039,56 @@ function drawCharts(root, M, cleanups) {
       };
     }), { labelWidth: 140, valueWidth: 116, barHeight: 12, rowHeight: 41 }).destroy);
   }
-  /* d) savings (first: the slope chart beside it takes its height) */
+  /* c) month by month, d) savings */
+  const elC = $('[data-chart="months"]', root);
+  if (elC) drawMonths(elC, M, cleanups);
   const elD = $('[data-chart="save"]', root);
   if (elD) drawSavings(elD, M, cleanups);
-  /* c) slope */
-  const elC = $('[data-chart="slope"]', root);
-  const cut = M.lines.filter((l) => l.change < 0).sort((p, q) => q.avg_spend - p.avg_spend);
-  if (elC && cut.length) {
-    const beside = elD && Math.abs(elC.getBoundingClientRect().top - elD.getBoundingClientRect().top) < 2;
-    const slopeHeight = beside ? Math.max(372, Math.min(560, Math.round(elD.getBoundingClientRect().height))) : 372;
-    cleanups.push(slope(elC, cut.map((l) => ({
-      key: l.category, label: catName(l.category), short: catName(l.category).split(' ')[0], from: l.avg_spend, to: l.budget, color: C.stop,
-      tip: tipCard({ title: l.category, value: `−${fmt.inr(-l.change)}`, unit: 'a month', rows: [['Now', fmt.inr(l.avg_spend)], ['New budget', fmt.inr(l.budget)], ['Cut', pct0((-l.change / l.avg_spend) * 100)]], note: l.category === 'Entertainment & Subscriptions' && M.planStopMonthly ? `Includes stopping ${planNames}.` : '', key: C.stop }),
-    })), { left: 'Now', right: 'New budget', height: slopeHeight, narrowHeight: 300, aria: 'Spending now versus the new budget' }).destroy);
-  } else if (elC) mount(elC, html`<p class="small">The plan does not change any part of your spending.</p>`);
+}
+
+/** Each month's income split into needs, wants and saved, then the same split with the plan. */
+function monthRows(M) {
+  const { b, insights: ins } = M;
+  const flow = (ins && ins.cash_flow) || [];
+  if (!b || !flow.length || !b.monthly_income) return [];
+  const isNeed = (l) => l.type === 'need';
+  const needCats = new Set(M.lines.filter(isNeed).map((l) => l.category));
+  const rows = flow.map((c, i) => {
+    const needs = (ins.categories || []).filter((x) => needCats.has(x.category)).reduce((a, x) => a + (x.by_month[i] || 0), 0);
+    return { label: fmt.month(c.month), needs, wants: Math.max(0, c.spend - needs), saved: Math.max(0, c.saved), rate: c.savings_rate };
+  });
+  rows.push({
+    label: 'With the plan', plan: true, rate: b.projected_savings_pct, saved: b.projected_savings,
+    needs: M.lines.filter(isNeed).reduce((a, l) => a + l.budget, 0),
+    wants: M.lines.filter((l) => !isNeed(l)).reduce((a, l) => a + l.budget, 0),
+  });
+  return rows;
+}
+
+function drawMonths(el, M, cleanups) {
+  const { b } = M;
+  const rows = monthRows(M);
+  mount(el, html`<div class="rp-save">
+    <div class="rp-big">
+      <span class="rp-big-num" data-count="${b.projected_savings_pct}" data-fmt="pct">${pct1(b.projected_savings_pct)}</span>
+      <p>of your income saved each month with this plan <span>(${pct1(b.current_savings_pct)} now)</span></p>
+    </div>
+    <div class="rp-mm">
+      ${rows.map((r, i) => html`<div class="rp-mm-row ${r.plan ? 'is-plan' : ''}">
+        <span class="rp-mm-l">${r.label}</span>
+        <div class="rp-mm-bar" data-mm="${i}"></div>
+        <span class="rp-mm-v"><b>${pct1(r.rate)}</b><small>saved</small></span>
+      </div>`)}
+    </div>
+  </div>`);
+  rows.forEach((r, i) => {
+    const tipFor = (word_, v, c, note) => tipCard({ title: `${r.label} · ${word_}`, value: fmt.inr(v), key: c, note });
+    cleanups.push(segbar($(`[data-mm="${i}"]`, el), [
+      { key: 'needs', value: r.needs, color: C.bar, label: fmt.inr(r.needs), labelColor: 'var(--rp-on-soft)', tip: tipFor('Needs', r.needs, C.bar, 'Rent, bills, groceries and other things you must pay.') },
+      { key: 'wants', value: r.wants, color: C.trim, label: fmt.inr(r.wants), labelColor: 'var(--rp-on-soft)', tip: tipFor('Wants', r.wants, C.trim, 'Food out, shopping, fun and other things you choose.') },
+      { key: 'saved', value: r.saved, color: C.save, label: fmt.inr(r.saved), labelColor: 'var(--rp-on-save)', tip: tipFor('Saved', r.saved, C.save, `${pct1(r.rate)} of your income.`) },
+    ], { size: 'tall', aria: `${r.label}: needs ${fmt.inr(r.needs)}, wants ${fmt.inr(r.wants)}, saved ${fmt.inr(r.saved)}.` }).destroy);
+  });
 }
 
 function drawSavings(el, M, cleanups) {
@@ -1098,22 +1099,27 @@ function drawSavings(el, M, cleanups) {
   if (M.planStopMonthly > 0) parts.push({ key: 'stop', label: `Stop ${planLabel}`, value: M.planStopMonthly, color: C.stop, labelColor: '#fff' });
   M.lines.filter((l) => l.change < 0).forEach((l) => {
     let v = -l.change;
-    if (l.category === 'Entertainment & Subscriptions') v -= M.planStopMonthly; // the budget takes cancelled subscriptions out of this line
-    if (v >= 1) parts.push({ key: l.category, label: `Less on ${catName(l.category).toLowerCase()}`, value: v, color: C.trim, labelColor: 'var(--rp-on-soft)' });
+    // Stopped subscriptions are already in the "Stop" part. New audits record how much left each line; older ones took it all from this one.
+    v -= l.stopped != null ? l.stopped : (l.category === 'Entertainment & Subscriptions' ? M.planStopMonthly : 0);
+    if (v >= 1) parts.push({ key: l.category, label: `Less on ${l.category.toLowerCase()}`, value: v, color: C.trim, labelColor: 'var(--rp-on-soft)' });
   });
   const trims = parts.filter((p) => p.key !== 'stop').sort((p, q) => q.value - p.value);
   const ordered = [...parts.filter((p) => p.key === 'stop'), ...trims];
-  const sumP = ordered.reduce((a, p) => a + p.value, 0) || 1;
   const adds = Math.max(0, b.projected_savings - b.current_savings);
+  /* Each line is rounded on its own. Any rupee left over goes to the biggest trim, so the parts add up to the total. */
+  ordered.forEach((p) => { p.value = Math.round(p.value); });
+  const left = Math.round(adds) - ordered.reduce((a, p) => a + p.value, 0);
+  if (trims.length && left && Math.abs(left) <= 5) trims[0].value += left;
+  const sumP = ordered.reduce((a, p) => a + p.value, 0) || 1;
   const scaleTop = Math.max(1, b.savings_target, b.projected_savings);
   const nowShare = Math.max(0, Math.min(1, b.current_savings / scaleTop));
   const planShare = Math.max(nowShare, Math.min(1, b.projected_savings / scaleTop));
   const reached = b.projected_savings >= b.savings_target;
   mount(el, html`<div class="rp-save">
-    <div class="rp-big">
+    ${monthRows(M).length ? '' : html`<div class="rp-big">
       <span class="rp-big-num" data-count="${b.projected_savings_pct}" data-fmt="pct">${pct1(b.projected_savings_pct)}</span>
       <p>of your income saved each month with this plan <span>(${pct1(b.current_savings_pct)} now)</span></p>
-    </div>
+    </div>`}
     ${gap > 0 ? html`
     <div class="rp-save-over">
       <div class="rp-save-scale"><span><b>${fmt.inr(b.current_savings)}</b> saved now</span><span>${reached ? html`<b>${fmt.inr(b.savings_target)}</b> goal` : html`<b>${fmt.inr(b.projected_savings)}</b> with the plan`}</span></div>
@@ -1127,8 +1133,7 @@ function drawSavings(el, M, cleanups) {
     <ul class="rp-save-list">
       ${ordered.map((p) => html`<li><i style="background:${raw(p.color)}"></i><span>${p.label}</span><b>${fmt.inr(p.value)}</b></li>`)}
       <li class="is-total"><i></i><span>Extra saved each month</span><b>${fmt.inr(sumP)}</b></li>
-    </ul>
-    ${Math.abs(sumP - adds) >= 1 ? html`<p class="tiny rp-save-foot">Amounts are rounded, so they can differ by a rupee or two.</p>` : ''}` : html`<p class="small">You save ${fmt.inr(b.current_savings)} a month, above your goal of ${fmt.inr(b.savings_target)}.</p>`}
+    </ul>` : html`<p class="small">You save ${fmt.inr(b.current_savings)} a month, above your goal of ${fmt.inr(b.savings_target)}.</p>`}
   </div>`);
   if (gap <= 0) return;
   cleanups.push(segbar($('[data-over]', el), [
@@ -1149,7 +1154,8 @@ function drawStatBars(root, M, cleanups) {
   put('[data-bar="back"]', backParts.map((p, i) => ({ key: `b${i}`, value: p.v, color: C.back, tip: tipCard({ title: p.name, value: fmt.inr(p.v), key: C.back, note: M.meta(p.id).status === 'email_sent' ? 'You have asked for it back.' : 'Ask for it back.' }) })), 'Money to get back');
   put('[data-bar="subs"]', [...S.subs].sort((p, q) => q.latest_amount - p.latest_amount).map((x) => {
     const g = M.stopSet.has(x.merchant) ? 'stop' : M.hikeLive.has(x.merchant) ? 'up' : 'keep';
-    return { key: x.merchant, value: x.latest_amount, color: C[g], tip: tipCard({ title: x.display, value: fmt.inr(x.latest_amount), unit: 'a month', note: g === 'stop' ? 'You plan to stop it.' : g === 'up' ? 'Price went up.' : 'Fine for now.', key: C[g] }) };
+    const c = g === 'keep' ? C.bar : C[g];
+    return { key: x.merchant, value: x.latest_amount, color: c, tip: tipCard({ title: x.display, value: fmt.inr(x.latest_amount), unit: 'a month', note: g === 'stop' ? 'You plan to stop it.' : g === 'up' ? 'Price went up.' : 'Fine for now.', key: c }) };
   }), 'Subscriptions by size');
   put('[data-bar="up"]', M.hikes.map((h) => ({ key: h.merchant, value: h.extra_per_year, color: C.up, tip: tipCard({ title: h.kind === 'bank_fee_hike' ? 'Bank fee' : h.display, value: `+${fmt.inr(h.extra_per_year)}`, unit: 'a year', rows: [['Was', fmt.inr(h.old)], ['Now', fmt.inr(h.new)]], key: C.up, note: `${fmt.signedPct(h.pct)}` }) })), 'Price rises');
   if (b) {
@@ -1186,7 +1192,7 @@ export async function render(root) {
   const myHash = location.hash;
   let alive = true, teardown = [], M = null;
   /* What the person is doing. Survives a repaint after an action. */
-  const ui = { view: 'all', selected: null, query: '', raw: '', more: false, form: null, value: '', busy: null, error: null, wordsOpen: false, sinceClosed: false };
+  const ui = { view: 'all', selected: null, query: '', raw: '', more: false, form: null, value: '', busy: null, error: null, sinceClosed: false };
 
   mount(root, skeleton());
   let data;
@@ -1204,15 +1210,14 @@ export async function render(root) {
   const paint = (d, still = false) => {
     clearPaint();
     const y = scrollY;
-    const words0 = $('[data-words]', root), since0 = $('[data-since]', root), list0 = $('[data-list]', root);
-    if (words0) ui.wordsOpen = words0.open;
+    const since0 = $('[data-since]', root), list0 = $('[data-list]', root);
     if (since0) ui.sinceClosed = !since0.open;
     const listTop = list0 ? list0.scrollTop : 0;
     if (still) root.style.minHeight = `${root.offsetHeight}px`;
 
     M = buildModel(d);
     if (ui.selected && !M.rowByKey.has(ui.selected)) { ui.selected = null; ui.form = null; }
-    mount(root, html`<div class="rp ${still ? 'rp-still' : ''}">${heroTpl(M)}${statsTpl(M)}${sinceTpl(M)}${mapTpl(M, ui)}${nextTpl(M)}${chartsTpl(M)}${eyesTpl(M)}${wordsTpl(M, ui)}</div>`);
+    mount(root, html`<div class="rp ${still ? 'rp-still' : ''}">${heroTpl(M)}${statsTpl(M)}${sinceTpl(M)}${mapTpl(M, ui)}${nextTpl(M)}${chartsTpl(M)}${eyesTpl(M)}${linksTpl()}</div>`);
     const page = $('.rp', root);
     if (still) $$('.reveal', root).forEach((n) => n.classList.add('is-in')); else reveal(root);
     const sinceEl = $('[data-since]', root);

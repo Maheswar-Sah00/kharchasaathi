@@ -284,11 +284,15 @@ def run_tool(ctx: Ctx, name, inp):
     if name == "build_budget":
         f = db.q("SELECT kind, amount, merchant FROM findings WHERE run_id=?", (rid,))
         recoverable = sum(x["amount"] for x in f if x["kind"] in ("duplicate", "zombie_charge"))
-        latest = {r["merchant"]: r["latest_amount"] for r in ctx.recurring}
+        recurring = {r["merchant"]: r for r in ctx.recurring}
         keep = {k for k, v in db.get_sub_decisions().items() if v == "keep"}
         cancel = [m for m in inp.get("cancel_merchants", []) if m not in keep]
-        cancel_monthly = sum(latest.get(m, 0) for m in cancel)
-        b = budget_mod.build_budget(ctx.rows, inp.get("savings_target_pct") or ctx.savings_target, recoverable, cancel_monthly)
+        cancelled = {}
+        for m in cancel:
+            if m in recurring:
+                cat = recurring[m]["category"]
+                cancelled[cat] = cancelled.get(cat, 0) + recurring[m]["latest_amount"]
+        b = budget_mod.build_budget(ctx.rows, inp.get("savings_target_pct") or ctx.savings_target, recoverable, cancelled)
         b["cancel_merchants"] = cancel
         b["kept_by_user"] = sorted(keep & set(inp.get("cancel_merchants", [])))
         ctx.add_finding("budget", None, "Monthly budget", b["projected_savings"], b)

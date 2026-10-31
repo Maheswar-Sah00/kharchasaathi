@@ -3,99 +3,175 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Reminder Calls · KharchaSaathi</title>
+<title>Reminder calls · KharchaSaathi</title>
+<script>
+  /* Same theme logic as index.html: set it before anything paints. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('ks-theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="icon" href="/web/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/web/css/base.css">
 <style>
-  :root{--bg:#f6f7f5;--card:#fff;--ink:#14201b;--muted:#5d6b64;--line:#e4e8e5;--accent:#0f9d6b;--accent-ink:#fff;
-        --soft:#dcf5ea;--warn:#b45309;--warn-soft:#fef3c7;--bad:#b91c1c;--bad-soft:#fee2e2}
-  @media (prefers-color-scheme:dark){:root{--bg:#0f1412;--card:#18201c;--ink:#e8efeb;--muted:#9aa8a1;--line:#2a3530;
-        --accent:#34d399;--accent-ink:#06261a;--soft:#123527;--warn:#fbbf24;--warn-soft:#3a2c0a;--bad:#f87171;--bad-soft:#3b1414}}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif}
-  main{max-width:980px;margin:0 auto;padding:28px 16px 60px}
-  a{color:var(--accent)}
-  h1{font-size:28px;margin:0 0 4px;letter-spacing:-.02em} .lead{color:var(--muted);margin:0 0 22px}
-  .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:16px} @media(max-width:820px){.grid{grid-template-columns:1fr}}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
-  .card h2{font-size:16px;margin:0 0 12px}
-  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
-  .row:first-of-type{border-top:0}
-  .m{font-weight:600} .sub{color:var(--muted);font-size:13px}
-  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--soft);color:var(--accent);white-space:nowrap}
-  .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.bad{background:var(--bad-soft);color:var(--bad)}
-  .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
-  .seg button{border:0;background:transparent;color:var(--ink);padding:7px 14px;font:inherit;cursor:pointer}
-  .seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
-  textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;background:var(--bg);color:var(--ink);resize:vertical}
-  .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-  .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer}
-  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-  .btn:disabled{opacity:.55;cursor:wait}
-  .status{margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--bg);font-size:14px;display:none}
-  .status.show{display:block} .status.ok{background:var(--soft)} .status.err{background:var(--bad-soft);color:var(--bad)}
-  .guard{font-size:13px;color:var(--muted);margin:10px 0 0;padding-left:18px} .guard li{margin:2px 0}
-  label{display:flex;align-items:center;gap:8px;margin:8px 0}
-  select{font:inherit;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
-  .setup{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:12px 14px;margin-bottom:16px;display:none}
-  code{font-family:ui-monospace,Consolas,monospace;font-size:13px}
-  .ring{display:inline-block;animation:ring 1s infinite} @keyframes ring{0%,100%{transform:rotate(0)}25%{transform:rotate(-15deg)}75%{transform:rotate(15deg)}}
+  .cl-head { padding-block: clamp(24px, 4vw, 48px) clamp(24px, 3vw, 36px); }
+  .cl-head .lead { margin-top: 12px; }
+  .cl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .cl-card { padding: clamp(20px, 2.2vw, 28px); min-width: 0; }
+  .cl-card .title { margin-bottom: 16px; }
+  .cl-setup { display: flex; gap: 10px; margin-bottom: 16px; padding: 14px 16px; border-radius: var(--r-md); background: var(--c-yellow-soft); color: var(--t-warn); font-size: 14.5px; }
+  .cl-setup svg, .cl-status svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+  .cl-setup code, .cl-mono { font-family: var(--font-mono); font-size: 13px; overflow-wrap: anywhere; }
+  .cl-seg { margin-bottom: 12px; max-width: 100%; }
+  #script { min-height: 150px; font-size: 15px; }
+  #src:not(:empty) { margin-top: 8px; }
+  .cl-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .cl-status { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; padding: 12px 14px; border-radius: var(--r-md); background: var(--bg-sunk); color: var(--ink-2); font-size: 14.5px; }
+  .cl-status.ok { background: var(--c-green-soft); color: var(--t-good); }
+  .cl-status.err { background: var(--c-red-soft); color: var(--t-bad); }
+  .cl-status .small { display: block; color: inherit; opacity: .85; }
+  .cl-status > div { min-width: 0; overflow-wrap: anywhere; }
+  .cl-guard { margin: 16px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--ink-3); }
+  .cl-guard li { margin: 3px 0; overflow-wrap: anywhere; }
+  .cl-guard b { font-weight: 600; color: var(--ink-2); }
+  .cl-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .cl-row:first-child { border-top: 0; padding-top: 0; }
+  .cl-row:last-child { padding-bottom: 0; }
+  .cl-name { font-weight: 500; color: var(--ink); font-size: 15px; }
+  .cl-opts { display: grid; gap: 12px; }
+  .cl-days { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 15.5px; color: var(--ink-2); }
+  .cl-days .select { width: auto; min-height: 38px; padding-block: 6px; padding-left: 14px; padding-right: 34px; background-position: right 12px center; font-size: 15px; }
+  .cl-note { margin-top: 12px; }
+  .cl-back { display: inline-flex; align-items: center; gap: 6px; font-size: 14.5px; font-weight: 500; color: var(--ink-3); }
+  .cl-back:hover { color: var(--ink); }
+  .nav-inner { grid-template-columns: 1fr auto; }
+  @media (max-width: 860px) { .cl-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
-<main>
-  <p class="sub"><a href="/legacy">← Back to the audit</a></p>
-  <h1>📞 Reminder calls</h1>
-  <p class="lead">People ignore the bank's pre-debit SMS. A phone call gets attention. KharchaSaathi calls you <b>before a subscription renews</b> and <b>once a month</b> with a money check-in.</p>
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/" aria-label="KharchaSaathi home">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="15" fill="var(--ink)"/>
+        <circle cx="16" cy="16" r="11.5" fill="none" stroke="var(--bg)" stroke-opacity=".35" stroke-width="1"/>
+        <path d="M11.2 10.2h9.6M11.2 13.6h9.6M14 10.2c3.6 0 5.2 1.4 5.2 3.4s-1.6 3.4-5.2 3.4h-2.4l6.6 6.2" fill="none" stroke="var(--bg)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>KharchaSaathi</span><small>खर्चा साथी</small>
+    </a>
+    <div class="nav-actions">
+      <button class="theme-toggle" id="theme-toggle" aria-label="Switch light or dark theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <mask id="moon-cut"><rect width="24" height="24" fill="#fff"/><circle class="moon-mask" cx="17" cy="7" r="6" fill="#000"/></mask>
+          <circle class="core" cx="12" cy="12" r="5.2" fill="currentColor" mask="url(#moon-cut)"/>
+          <g class="sun-rays" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></g>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
 
-  <div class="setup" id="setup"></div>
+<main class="page">
+  <header class="cl-head">
+    <a class="cl-back" href="/"><span aria-hidden="true">←</span> Back to KharchaSaathi</a>
+    <h1 class="h1" style="margin-top:14px">Reminder calls</h1>
+    <p class="lead">A call before a subscription renews, and a money check-in once a month.</p>
+  </header>
 
-  <div class="grid">
-    <section class="card">
-      <h2>What the agent will say</h2>
-      <div class="seg"><button data-mode="renewal" class="on">Before renewals</button><button data-mode="monthly">Monthly check-in</button></div>
-      <textarea id="script" placeholder="Click “Write script” to let the agent write it from your latest audit…"></textarea>
-      <div class="sub" id="src"></div>
-      <div class="btns">
-        <button class="btn" id="write">✍️ Write script</button>
-        <button class="btn primary" id="call">📞 Call my phone now</button>
-        <button class="btn" id="play">🔊 Play here instead</button>
+  <div class="cl-setup" id="setup" hidden></div>
+
+  <div class="cl-grid">
+    <section class="card cl-card">
+      <h2 class="title">What the agent will say</h2>
+      <div class="seg cl-seg"><button data-mode="renewal" class="is-active">Before renewals</button><button data-mode="monthly">Monthly check-in</button></div>
+      <label class="sr-only" for="script">Call script</label>
+      <textarea class="textarea" id="script" placeholder="Press Write script to preview the call."></textarea>
+      <div class="tiny" id="src"></div>
+      <div class="cl-btns">
+        <button class="btn btn-primary" id="call"></button>
+        <button class="btn btn-secondary" id="write"></button>
+        <button class="btn btn-ghost" id="play"></button>
       </div>
-      <div class="status" id="status"></div>
-      <ul class="guard">
+      <div class="cl-status" id="status" role="status" hidden></div>
+      <ul class="cl-guard">
         <li>Calls only <b id="callto">your allowlisted number</b>. The app can't choose anyone else.</li>
         <li>Never speaks card or account numbers, OTP, CVV or PIN.</li>
-        <li>Scheduled calls only after you switch them on. Every call is in the audit log.</li>
+        <li>Every call is in the activity log.</li>
       </ul>
     </section>
 
-    <section class="card">
-      <h2>Coming up</h2>
-      <div id="upcoming" class="sub">Loading…</div>
+    <section class="card cl-card">
+      <h2 class="title">Coming up</h2>
+      <div id="upcoming" class="small">Loading…</div>
     </section>
 
-    <section class="card">
-      <h2>Automatic calls</h2>
-      <label><input type="checkbox" id="enabled"> Call me automatically</label>
-      <label>Before a renewal: <select id="days"><option>1</option><option selected>2</option><option>3</option><option>5</option><option>7</option></select> days</label>
-      <label><input type="checkbox" id="monthly" checked> Monthly check-in on the 1st</label>
-      <div class="btns"><button class="btn" id="save">Save</button><button class="btn primary" id="check">⏱️ Run automatic check now</button></div>
-      <div class="sub" style="margin-top:6px">The app checks by itself every 30 minutes. This button runs that same check immediately.</div>
-      <div class="sub" id="due" style="margin-top:8px"></div>
+    <section class="card cl-card">
+      <h2 class="title">Automatic calls</h2>
+      <div class="cl-opts">
+        <label class="cl-days" for="days">Call me when a renewal is within
+          <select class="select" id="days"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option selected>7</option></select> days</label>
+        <label class="check"><input type="checkbox" id="afteraudit" checked> Right after each audit</label>
+        <label class="check"><input type="checkbox" id="enabled"> Also check every day (9 am to 9 pm)</label>
+        <label class="check"><input type="checkbox" id="monthly" checked> Monthly check-in on the 1st</label>
+      </div>
+      <div class="cl-btns"><button class="btn btn-primary" id="save">Save</button><button class="btn btn-secondary" id="check">Run the check now</button></div>
+      <div class="tiny cl-note" id="due"></div>
     </section>
 
-    <section class="card">
-      <h2>Recent calls</h2>
-      <div id="calls" class="sub">None yet.</div>
+    <section class="card cl-card">
+      <h2 class="title">Recent calls</h2>
+      <div id="calls" class="small">None yet.</div>
     </section>
   </div>
 </main>
+
+<footer class="footer">
+  <div class="page footer-inner"><span class="tiny">Demo data is made up.</span></div>
+</footer>
+
+<script type="module">
+  import { toggleTheme } from '/web/js/core.js';
+  document.getElementById('theme-toggle').addEventListener('click', (e) => toggleTheme(e.currentTarget));
+</script>
 <script>
 const $ = s => document.querySelector(s);
 let mode = 'renewal';
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const money = n => n == null ? '' : '₹' + Number(n).toLocaleString('en-IN');
-function status(text, kind) { const el = $('#status'); el.className = 'status show ' + (kind || ''); el.innerHTML = text; }
+const svg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const I = {
+  phone: svg('<path d="M6.6 3.5h2.6l1.5 4-2 1.6a12.5 12.5 0 0 0 6.2 6.2l1.6-2 4 1.5v2.6a2 2 0 0 1-2.2 2C10.9 19 5 13.1 4.6 5.7a2 2 0 0 1 2-2.200z"/>'),
+  pencil: svg('<path d="M4.500 19.500h4l10-10a2.100 2.100 0 0 0-4-4l-10 10v4z"/><path d="m13.500 6.500 4 4"/>'),
+  sound: svg('<path d="M4.500 9.500v5h3.500l4.500 4v-13l-4.500 4z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M18.500 6.500a8 8 0 0 1 0 11"/>'),
+  check: svg('<path d="m5 12.500 4.500 4.500L19 7.500"/>'),
+  alert: svg('<circle cx="12" cy="12" r="8.500"/><path d="M12 8v4.600M12 15.800v.2"/>'),
+};
+const SPIN = '<span class="spinner"></span>';
+$('#call').innerHTML = I.phone + 'Call my phone now';
+$('#write').innerHTML = I.pencil + 'Write script';
+$('#play').innerHTML = I.sound + 'Play here instead';
+
+function status(text, kind) {
+  const el = $('#status');
+  el.hidden = false;
+  el.className = 'cl-status ' + (kind || '');
+  const icon = kind === 'ok' ? I.check : kind === 'err' ? I.alert : '';
+  el.innerHTML = icon + '<div>' + text + '</div>';
+}
+const shortDate = iso => {
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleDateString('en-IN', {day: 'numeric', month: 'short'});
+};
+const shortStamp = iso => {
+  const d = new Date(iso);
+  return isNaN(d) ? iso.replace('T', ' ') : shortDate(iso) + ', ' + d.toLocaleTimeString('en-IN', {hour: 'numeric', minute: '2-digit'});
+};
+const cap = s => { s = String(s ?? ''); return s.charAt(0).toUpperCase() + s.slice(1); };
 
 async function api(path, body) {
   const r = await fetch('/api/reminders' + path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)} : {});
@@ -108,52 +184,53 @@ async function load() {
   const d = await api('');
   $('#callto').textContent = d.call_to || 'your allowlisted number';
   if (!d.configured) {
-    $('#setup').style.display = 'block';
-    $('#setup').innerHTML = '⚠️ Phone calls aren\'t set up yet. Add to <code>.env</code>: <code>' + d.missing.join(', ') +
-      '</code>, then restart the server. You can still write the script and use <b>Play here instead</b>.';
+    $('#setup').hidden = false;
+    $('#setup').innerHTML = I.alert + '<div>Phone calls aren\'t set up yet. Add <code>' + d.missing.map(esc).join(', ') +
+      '</code> to <code>.env</code> and restart the server. <b>Play here instead</b> still works.</div>';
   }
   const ups = d.upcoming || [];
   $('#upcoming').innerHTML = ups.length ? ups.slice(0, 8).map(u => `
-    <div class="row"><div><div class="m">${esc(u.display)} · ${money(u.amount)}</div>
-      <div class="sub">${esc(u.date)}${u.risk ? ' · ' + esc(u.risk) : ''}</div></div>
-      <span class="pill ${u.priority === 0 ? 'bad' : u.priority === 1 ? 'warn' : ''}">in ${u.days_left} day${u.days_left === 1 ? '' : 's'}</span></div>`).join('')
-    : 'Run the audit first. Renewals come from the subscriptions it finds.';
+    <div class="cl-row"><div><div class="cl-name">${esc(u.display)} · ${money(u.amount)}</div>
+      <div class="small">${esc(shortDate(u.date))}${u.risk ? ' · ' + esc(u.risk) : ''}</div></div>
+      <span class="badge ${u.priority === 0 ? 'badge-bad' : u.priority === 1 ? 'badge-warn' : 'badge-good'}">in ${u.days_left} day${u.days_left === 1 ? '' : 's'}</span></div>`).join('')
+    : 'Run an audit first.';
   const s = d.settings || {};
-  $('#enabled').checked = !!s.enabled; $('#monthly').checked = !!s.monthly; $('#days').value = String(s.days_before || 2);
-  $('#due').textContent = s.enabled ? (d.due_today.length ? 'Due today: ' + d.due_today.map(x => x[0]).join(', ') : 'Nothing due today.') : 'Automatic calls are off.';
+  $('#enabled').checked = !!s.enabled; $('#monthly').checked = !!s.monthly; $('#days').value = String(s.days_before || 7); $('#afteraudit').checked = s.after_audit !== 0;
+  $('#due').textContent = s.enabled ? (d.due_today.length ? 'Due today: ' + d.due_today.map(x => x[0]).join(', ') : 'Nothing due today.') : 'The daily check is off.';
   const calls = d.recent_calls || [];
   $('#calls').innerHTML = calls.length ? calls.map(c => {
     let det = {}; try { det = JSON.parse(c.detail || '{}'); } catch (e) {}
-    const pill = c.status === 'answered' ? '' : c.status === 'failed' ? 'bad' : 'warn';
-    return `<div class="row"><div><div class="m">${esc(c.mode)} · ${esc(c.ts.replace('T', ' '))}</div>
-      <div class="sub">${esc(det.error || (det.callee_hung_up ? 'You hung up early' : 'Message played'))}</div></div>
-      <span class="pill ${pill}">${esc(c.status)}</span></div>`; }).join('') : 'None yet.';
+    const pill = c.status === 'answered' ? 'badge-good' : c.status === 'failed' ? 'badge-bad' : 'badge-warn';
+    return `<div class="cl-row"><div><div class="cl-name">${esc(cap(c.mode))} · ${esc(shortStamp(c.ts))}</div>
+      <div class="small">${esc(det.error || (det.callee_hung_up ? 'You hung up early' : 'Message played'))}</div></div>
+      <span class="badge ${pill}">${esc(cap(c.status))}</span></div>`; }).join('') : 'None yet.';
 }
 
 document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.seg button').forEach(x => x.classList.remove('on'));
-  b.classList.add('on'); mode = b.dataset.mode; $('#script').value = ''; $('#src').textContent = '';
+  document.querySelectorAll('.seg button').forEach(x => x.classList.remove('is-active'));
+  b.classList.add('is-active'); mode = b.dataset.mode; $('#script').value = ''; $('#src').textContent = '';
 });
 
 $('#write').onclick = async () => {
-  const b = $('#write'); b.disabled = true; b.textContent = '✍️ Writing…';
+  const b = $('#write'); b.disabled = true; b.innerHTML = SPIN + 'Writing…';
   try {
-    const r = await api('/script', {mode, days_ahead: 7});
+    const r = await api('/script', {mode});
     $('#script').value = r.script || 'Nothing to remind about. Run the audit first.';
-    $('#src').textContent = r.source === 'claude' ? 'Written by Claude from your audit findings' : 'Written from a template (' + r.source + ')';
+    $('#src').textContent = r.source === 'claude' ? 'Written by Claude from your audit' : 'Written from a template (' + r.source + ')';
   } catch (e) { status('Couldn\'t write the script: ' + esc(e.message), 'err'); }
-  b.disabled = false; b.textContent = '✍️ Write script';
+  b.disabled = false; b.innerHTML = I.pencil + 'Write script';
 };
 
 $('#call').onclick = async () => {
+  if (!$('#script').value.trim()) await $('#write').onclick();  // nothing typed: the agent writes it
   const script = $('#script').value.trim();
-  if (!script) return status('Write the script first.', 'err');
+  if (!script || script.startsWith('Nothing to remind')) return status('Nothing to call about yet. Run an audit first.', 'err');
   const b = $('#call'); b.disabled = true;
-  status('<span class="ring">📞</span> Calling ' + esc($('#callto').textContent) + '… answer on your phone (Linphone app).');
+  status(SPIN + ' Calling ' + esc($('#callto').textContent) + '… answer on your phone (Linphone app).');
   try {
     const r = await api('/call', {script, mode});
-    status('✅ Call answered and the message was played' + (r.callee_hung_up ? ' (you hung up early)' : '') + '.', 'ok');
-  } catch (e) { status('❌ ' + esc(e.message) + '<br><span class="sub">Tip: use “Play here instead” as a fallback.</span>', 'err'); }
+    status('Call answered and the message was played' + (r.callee_hung_up ? ' (you hung up early)' : '') + '.', 'ok');
+  } catch (e) { status(esc(e.message) + '<span class="small">Use Play here instead.</span>', 'err'); }
   b.disabled = false; load();
 };
 
@@ -164,30 +241,34 @@ $('#play').onclick = () => {
   const u = new SpeechSynthesisUtterance(t);
   const v = speechSynthesis.getVoices().find(v => v.lang === 'en-IN'); if (v) u.voice = v;
   u.rate = 0.95; speechSynthesis.speak(u);
-  status('🔊 Playing the reminder here…');
+  status('Playing the reminder here…');
 };
 
 $('#save').onclick = async () => {
-  await api('/settings', {enabled: $('#enabled').checked, days_before: Number($('#days').value), monthly: $('#monthly').checked});
+  await api('/settings', {enabled: $('#enabled').checked, days_before: Number($('#days').value), monthly: $('#monthly').checked, after_audit: $('#afteraudit').checked});
   status('Saved.', 'ok'); load();
 };
 
 $('#check').onclick = async () => {
   const b = $('#check'); b.disabled = true;
-  await api('/settings', {enabled: $('#enabled').checked, days_before: Number($('#days').value), monthly: $('#monthly').checked});
-  status('<span class="ring">⏱️</span> Agent is checking what is due… if something is, your phone will ring.');
+  await api('/settings', {enabled: $('#enabled').checked, days_before: Number($('#days').value), monthly: $('#monthly').checked, after_audit: $('#afteraudit').checked});
+  status(SPIN + ' Checking what is due. If something is, your phone will ring.');
   try {
     const r = await api('/check-now', {});
     if (!r.enabled || !r.due.length) status(esc(r.note), r.enabled ? '' : 'err');
     else status(r.results.map(x => x.status === 'answered'
-      ? '✅ Automatic ' + esc(x.mode) + ' call placed and answered.<br><span class="sub">' + esc(x.script) + '</span>'
-      : '❌ Automatic ' + esc(x.mode) + ' call failed: ' + esc(x.error)).join('<br>'),
+      ? 'Automatic ' + esc(x.mode) + ' call placed and answered.<span class="small">' + esc(x.script) + '</span>'
+      : 'Automatic ' + esc(x.mode) + ' call failed: ' + esc(x.error)).join('<br>'),
       r.results.every(x => x.status === 'answered') ? 'ok' : 'err');
-  } catch (e) { status('❌ ' + esc(e.message), 'err'); }
+  } catch (e) { status(esc(e.message), 'err'); }
   b.disabled = false; load();
 };
 
 load().catch(e => status('Couldn\'t load: ' + esc(e.message), 'err'));
+
+const nav = $('#nav');
+const onScroll = () => nav.classList.toggle('is-scrolled', scrollY > 8);
+addEventListener('scroll', onScroll, {passive: true}); onScroll();
 </script>
 </body>
 </html>

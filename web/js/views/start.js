@@ -1,8 +1,6 @@
-/* KharchaSaathi - #/start  ("Step 2 · Check your statements")
-   Babel's "Check the games like yours" page: centred step eyebrow, big serif
-   title, one plain paragraph, then one premium card per statement file, a
-   "Your goal and budget" card and a footer row with the two ways forward.
-   Also exports small helpers that run.js reuses (icons, file names, reasons). */
+/* KharchaSaathi - #/start
+   Your files on the left, your goal on the right, and the way forward always in
+   view at the bottom. Also exports small helpers that run.js and log.js reuse. */
 import { html, raw, mount, $, $$, on, api, store, fmt, navigate, toast } from '../core.js';
 
 export const title = 'Check your statements';
@@ -140,7 +138,7 @@ const SAMPLE_LOCKED_FILE = 'card_statement_nova_2026_10.pdf';
 export function unlockBox(name, key = '') {
   const id = `rn-pw-${key}`;
   return html`<form class="rn-unlock" data-unlock="${name}" autocomplete="off" novalidate>
-    <p class="rn-unlock-how">Banks in India usually set it as the first 4 letters of your name in capitals, then your birth day and month. For example, RAHU0507 for Rahul, born on 5 July.${name === SAMPLE_LOCKED_FILE ? ' In this made-up sample, Arjun was born on 14 February.' : ''}</p>
+    <p class="rn-unlock-how">Usually the first 4 letters of your name in capitals, then your birth day and month, like RAHU0507.${name === SAMPLE_LOCKED_FILE ? ' In this sample, Arjun was born on 14 February.' : ''}</p>
     <label class="label" for="${id}">Password for this file</label>
     <div class="rn-unlock-row">
       <div class="rn-pw">
@@ -150,7 +148,7 @@ export function unlockBox(name, key = '') {
       <button type="submit" class="btn btn-primary">Unlock</button>
     </div>
     <p class="rn-unlock-err" role="alert" hidden></p>
-    <p class="rn-unlock-hint">It is not saved anywhere, and it is forgotten when the app restarts.</p>
+    <p class="rn-unlock-hint">Kept only until the app restarts.</p>
   </form>`;
 }
 export function toggleShowPw(btn) {
@@ -224,7 +222,6 @@ const EXAMPLES = [
   { label: 'Double charges', text: 'Check for double charges and help me get my money back.' },
   { label: 'Safety test', text: SAFETY_GOAL, safety: true },
 ];
-const QUICK = [20, 30, 40, 50];
 
 /* File objects the user added this session, so they can add more or remove one. */
 let kept = { batch: null, files: [] };
@@ -245,78 +242,56 @@ export async function render(root, ctx) {
   mount(root, html`
     <div class="rn-start page">
       <header class="rn-hero">
-        <p class="rn-stepchip"><b>Step 2</b><span>Check your files</span></p>
         <h1 class="h1">Check your statements</h1>
-        <p class="lead">Before the AI starts, we open each file and count what is inside. If a file or a row has a problem, you will see it here first, in plain words. This check is quick, free and uses no AI.</p>
         <div class="rn-who" id="rn-who"><span class="skel" style="width:300px;height:20px"></span></div>
       </header>
 
-      <section class="rn-files" aria-labelledby="rn-files-h">
-        <div class="rn-files-head">
-          <div id="rn-files-sum">
+      <div class="rn-layout">
+        <section class="rn-files" aria-labelledby="rn-files-h">
+          <div class="rn-files-head" id="rn-files-sum">
             <h2 class="h3" id="rn-files-h"><span class="skel" style="display:inline-block;width:380px;max-width:80vw;height:30px"></span></h2>
             <p class="small"><span class="skel" style="display:inline-block;width:300px;max-width:70vw;height:16px"></span></p>
           </div>
-          <div class="rn-legend" id="rn-legend" aria-hidden="true"></div>
-        </div>
-        <div class="rn-grid" id="rn-grid">${[0, 1, 2, 3, 4].map(skelCard)}${dropCard(false)}</div>
-        <input type="file" id="rn-input" accept=".csv,.pdf,text/csv,application/pdf" multiple hidden />
-      </section>
+          <div class="rn-list" id="rn-grid">${[0, 1, 2, 3, 4].map(skelRow)}${dropRow(false)}</div>
+          <input type="file" id="rn-input" accept=".csv,.pdf,text/csv,application/pdf" multiple hidden />
+        </section>
 
-      <section class="card rn-goal" aria-labelledby="rn-goal-h">
-        <div class="rn-goal-head">
-          <div>
-            <h2 class="title" id="rn-goal-h">Your goal and budget</h2>
-            <p class="small">Tell the agent what you want. It uses this to plan its work.</p>
+        <section class="card rn-goal" aria-labelledby="rn-goal-h">
+          <h2 class="title" id="rn-goal-h">Your goal and budget</h2>
+          <div class="rn-target">
+            <label class="label" for="rn-range">How much of your income do you want to save?</label>
+            <div class="rn-target-row">
+              <span class="rn-target-v" id="rn-pct">${S.target}%</span>
+              <span class="rn-target-amt" id="rn-amt"></span>
+            </div>
+            <div class="rn-range-wrap" id="rn-range-wrap">
+              <input type="range" class="range" id="rn-range" min="10" max="60" step="5" value="${S.target}" />
+              <span class="rn-now-tick" id="rn-tick" hidden><i></i><em></em></span>
+            </div>
+            <div class="rn-range-scale" aria-hidden="true"><span>10%</span><span>60%</span></div>
+            <p class="hint" id="rn-income-hint"></p>
           </div>
-        </div>
-        <div class="rn-goal-body">
-          <div class="rn-goal-col">
-            <div class="rn-income">
-              <div class="label">Monthly income</div>
-              <div class="rn-income-row"><span class="rn-income-v" id="rn-income"></span><span class="badge">${icon('lock')}Read only</span></div>
-              <p class="hint" id="rn-income-hint">Worked out from the salary credits in the bank statement.</p>
+          <div class="field">
+            <label class="label" for="rn-goal">What should it do?</label>
+            <textarea class="textarea" id="rn-goal" rows="3">${goal0}</textarea>
+            <div class="rn-examples">
+              ${EXAMPLES.map((x, i) => html`<button type="button" class="chip${x.safety ? ' rn-chip-safety' : ''}" data-ex="${i}">${x.safety ? icon('shield') : ''}${x.label}</button>`)}
             </div>
-            <div class="rn-target">
-              <label class="label" for="rn-range">How much of it do you want to save?</label>
-              <div class="rn-target-row">
-                <span class="rn-target-v" id="rn-pct">${S.target}%</span>
-                <span class="rn-target-amt" id="rn-amt"></span>
-              </div>
-              <div class="rn-range-wrap" id="rn-range-wrap">
-                <input type="range" class="range" id="rn-range" min="10" max="60" step="5" value="${S.target}" aria-describedby="rn-now" />
-                <span class="rn-now-tick" id="rn-tick" hidden><i></i><em></em></span>
-              </div>
-              <div class="rn-range-scale" aria-hidden="true"><span>10%</span><span>60%</span></div>
-              <div class="row-wrap rn-quick" role="group" aria-label="Quick choices">
-                ${QUICK.map((q) => html`<button type="button" class="chip" data-q="${q}" aria-pressed="false">${q}%</button>`)}
-              </div>
-              <p class="hint" id="rn-now">The agent builds a budget to reach it.</p>
-            </div>
+            <div class="rn-policy" id="rn-policy" role="status" aria-live="polite" hidden></div>
           </div>
-          <div class="rn-goal-col">
-            <div class="field">
-              <label class="label" for="rn-goal">What should it do?</label>
-              <textarea class="textarea" id="rn-goal" rows="3">${goal0}</textarea>
-              <div class="rn-examples"><span class="tiny">Try one:</span>
-                ${EXAMPLES.map((x, i) => html`<button type="button" class="chip${x.safety ? ' rn-chip-safety' : ''}" data-ex="${i}">${x.safety ? icon('shield') : ''}${x.label}</button>`)}
-              </div>
-              <div class="rn-policy" id="rn-policy" role="status" aria-live="polite" hidden></div>
-            </div>
-            <div class="field">
-              <label class="label" for="rn-notes">Anything the agent should know?</label>
-              <textarea class="textarea" id="rn-notes" rows="2" placeholder="For example: I cancelled Netflix last month.">${sess.notes ?? ''}</textarea>
-              <p class="hint">If you already cancelled something, say when. It will check for charges after that date.</p>
-            </div>
+          <div class="field">
+            <label class="label" for="rn-notes">Anything the agent should know?</label>
+            <textarea class="textarea" id="rn-notes" rows="2" placeholder="For example: I cancelled Netflix on 20 Sep.">${sess.notes ?? ''}</textarea>
           </div>
-        </div>
-        <div class="rn-goal-foot">
-          <button type="button" class="btn btn-primary btn-lg" id="rn-go">Run the audit ${icon('arrowRight')}</button>
-          <p class="small rn-go-note" id="rn-go-note">You'll watch every step as it happens. It takes a minute or two.</p>
-          <span class="spacer"></span>
-          <a class="btn btn-secondary btn-lg rn-replay-btn" href="#/run?mode=replay">${icon('play')}Watch a recorded run <span class="rn-free">free</span></a>
-        </div>
-      </section>
+        </section>
+      </div>
+
+      <div class="rn-gobar">
+        <p class="small rn-go-note" id="rn-go-note">Takes a minute or two.</p>
+        <span class="spacer"></span>
+        <a class="btn btn-ghost rn-replay-btn" href="#/run?mode=replay">${icon('play')}Watch a recorded run</a>
+        <button type="button" class="btn btn-primary btn-lg" id="rn-go">Run the audit ${icon('arrowRight')}</button>
+      </div>
     </div>`);
 
   const page = $('.rn-start', root);
@@ -335,19 +310,8 @@ export async function render(root, ctx) {
     range.style.setProperty('--p', `${((v - 10) / 50) * 100}%`);
     $('#rn-pct', root).textContent = `${v}%`;
     $('#rn-amt', root).textContent = S.batch || !income() ? 'of your income' : `${fmt.inr(Math.round(income() * v / 100))} a month`;
-    $$('[data-q]', root).forEach((b) => { const on_ = Number(b.dataset.q) === v; b.classList.toggle('is-active', on_); b.setAttribute('aria-pressed', String(on_)); });
-    const now = $('#rn-now', root);
-    if (S.nowPct == null || S.batch) {
-      now.textContent = 'The agent builds a budget to reach it.';
-    } else {
-      const diff = v - S.nowPct;
-      now.textContent = diff > 0.5
-        ? `You save about ${Math.round(S.nowPct)}% now. The agent will look for ways to reach ${v}%.`
-        : `You already save about ${Math.round(S.nowPct)}%. The agent will help you keep it there.`;
-    }
   }
   range.addEventListener('input', () => { S.target = clampTarget(range.value); paintTarget(); });
-  offs.push(on(root, 'click', '[data-q]', (e, b) => { S.target = Number(b.dataset.q); paintTarget(); }));
   paintTarget();
 
   /* ---------- goal + live safety check ---------- */
@@ -361,7 +325,8 @@ export async function render(root, ctx) {
     try { res = await api.post('/api/policy', { goal }); } catch { return; }
     if (my !== S.policyToken || !box.isConnected) return;
     if (res.allowed) { box.hidden = true; box.innerHTML = ''; return; }
-    mount(box, html`${icon('shieldX')}<div><b>This part will be refused.</b> ${splitReasons(res.reason).join(' ')} <span class="rn-policy-ok">The rest of the audit will still run.</span></div>`);
+    const why = splitReasons(res.reason).map((w) => (w.match(/^.*?[.!?](?=\s|$)/) || [w])[0]);
+    mount(box, html`${icon('shieldX')}<div><b>This part will be refused.</b> ${why.join(' ')} <span class="rn-policy-ok">The rest of the audit will still run.</span></div>`);
     box.hidden = false;
   }
   goalEl.addEventListener('input', () => { clearTimeout(policyTimer); policyTimer = setTimeout(checkPolicy, 350); });
@@ -462,7 +427,7 @@ export async function render(root, ctx) {
   async function loadPreview(quiet = false) {
     if (!quiet) {
       grid.classList.add('is-loading');
-      mount(grid, html`${[0, 1, 2, 3, 4].map(skelCard)}${dropCard(!!S.batch)}`);
+      mount(grid, html`${[0, 1, 2, 3, 4].map(skelRow)}${dropRow(!!S.batch)}`);
     }
     try {
       const r = await api.post('/api/preview', { batch: S.batch });
@@ -488,18 +453,16 @@ export async function render(root, ctx) {
     const who = $('#rn-who', root);
     const p = S.profile;
     if (S.batch) {
-      mount(who, html`<span class="rn-avatar">${icon('upload')}</span><span>You are checking <b>${fmt.plural((S.files || []).length || kept.files.length, 'file')} you added</b>.</span><button type="button" class="btn btn-ghost btn-sm" data-sample>Use the sample files</button>`);
+      mount(who, html`<span class="rn-avatar">${icon('upload')}</span><span><b>${fmt.plural((S.files || []).length || kept.files.length, 'file')} you added</b></span><button type="button" class="btn btn-ghost btn-sm" data-sample>Use the sample files</button>`);
     } else if (p) {
       const initials = p.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2);
-      mount(who, html`<span class="rn-avatar">${initials}</span><span><b>${p.name.split(' ')[0]}'s sample statements</b> · ${p.name}, ${p.age}, ${p.city}. The data is made up.</span><button type="button" class="btn btn-ghost btn-sm" data-pick>${icon('upload')}Use my own files</button>`);
+      mount(who, html`<span class="rn-avatar">${initials}</span><span><b>${p.name.split(' ')[0]}'s sample statements</b> · made-up data</span>`);
     } else {
-      mount(who, html`<span class="rn-avatar">${icon('doc')}</span><span>These are the sample statements. All the data is made up.</span><button type="button" class="btn btn-ghost btn-sm" data-pick>${icon('upload')}Use my own files</button>`);
+      mount(who, html`<span class="rn-avatar">${icon('doc')}</span><span>Sample statements · made-up data</span>`);
     }
-    $('#rn-income', root).textContent = S.batch || !income() ? 'From your salary' : fmt.inr(income());
     $('#rn-income-hint', root).textContent = S.batch || !income()
-      ? 'The agent works it out from the salary credits in your bank statement.'
-      : 'Worked out from the salary credits in the bank statement.';
-    $('#rn-income', root).classList.toggle('is-text', !!S.batch || !income());
+      ? 'Your income is worked out during the audit.'
+      : `Your income is ${fmt.inr(income())} a month, from the salary credits in your statement.`;
     paintTick();
   }
   function paintTick() {
@@ -518,7 +481,7 @@ export async function render(root, ctx) {
       mount(sum, html`<h2 class="h3" id="rn-files-h">${lost ? 'We could not find those files.' : 'We could not check the files.'}</h2>
         <p class="small">${lost ? 'Please add them again, or use the sample files.' : (S.error && S.error.message) || 'The server did not answer.'}</p>`);
       mount(grid, html`<div class="rn-file rn-file-empty"><span class="rn-glyph">${icon('alert')}</span><p class="body">Try again, or start from the sample statements.</p>
-        <div class="row-wrap"><button type="button" class="btn btn-secondary btn-sm" data-retry>${icon('retry')}Try again</button><button type="button" class="btn btn-ghost btn-sm" data-sample>Use the sample files</button></div></div>${dropCard(false)}`);
+        <div class="row-wrap"><button type="button" class="btn btn-secondary btn-sm" data-retry>${icon('retry')}Try again</button><button type="button" class="btn btn-ghost btn-sm" data-sample>Use the sample files</button></div></div>${dropRow(false)}`);
       const rb = $('[data-retry]', grid); if (rb) rb.addEventListener('click', loadPreview);
       setGo(false, 'Add your statements to start.');
       return;
@@ -529,7 +492,6 @@ export async function render(root, ctx) {
     const rows = ok.reduce((a, f) => a + (f.transactions || 0), 0);
     const aside = ok.reduce((a, f) => a + (f.quarantined || []).length, 0);
     const months = [...new Set(ok.flatMap((f) => f.months || []))].sort();
-    const axis = [...new Set([...months, ...bad.flatMap((f) => monthsFromName(f.name))])].sort();
     const issues = bad.map(fileIssue);
     const nOf = (t) => issues.filter((x) => x.t === t).length;
     const locked = nOf('needs_password'), layout = nOf('unknown_format'), skipped = issues.length - locked - layout;
@@ -545,19 +507,15 @@ export async function render(root, ctx) {
       <p class="small">${usable
         ? html`${ok.length ? `From ${ok.length === files.length ? fmt.plural(files.length, 'file') : `${ok.length} of ${files.length} files`}${months.length ? `, ${periodLabel(months)}` : ''}. ` : ''}${partsText}`
         : 'Add a CSV or PDF statement from your bank or card to start.'}</p>`);
-    mount($('#rn-legend', root), html`<span class="key"><i style="background:var(--ink)"></i>Month inside the file</span>
-      ${layout + locked ? html`<span class="key"><i class="rn-key-wait"></i>Not read yet</span>` : ''}
-      ${skipped ? html`<span class="key"><i class="rn-key-bad"></i>Could not be read</span>` : ''}`);
     const ownFiles = !!S.batch && kept.batch === S.batch;
-    const cells = files.reduce((n, f) => n + (!f.ok && fileIssue(f).t === 'needs_password' ? 2 : 1), 0);
-    mount(grid, html`${files.map((f, i) => fileCard(f, axis, i, ownFiles))}${dropCard(!!S.batch, (3 - (cells % 3)) % 3 || 3)}`);
+    mount(grid, html`${files.map((f, i) => fileRow(f, i, ownFiles))}${dropRow(!!S.batch)}`);
     setGo(usable > 0, !usable ? 'Add at least one statement that can be read.'
-      : locked ? `You'll watch every step. ${locked === 1 ? 'The locked file is' : `${locked} locked files are`} left out unless you unlock ${locked === 1 ? 'it' : 'them'} first.` : null);
+      : locked ? `${locked === 1 ? 'The locked file is' : `${locked} locked files are`} left out unless you unlock ${locked === 1 ? 'it' : 'them'} first.` : null);
   }
   function setGo(enabled, note) {
     const b = $('#rn-go', root);
     b.disabled = !enabled;
-    $('#rn-go-note', root).textContent = note || "You'll watch every step as it happens. It takes a minute or two.";
+    $('#rn-go-note', root).textContent = note || 'Takes a minute or two.';
   }
 
   /* Do not await here: the router must get the cleanup function straight away. */
@@ -597,27 +555,25 @@ function sortFiles(files) {
   return [...files].sort((a, b) => { const ka = key(a), kb = key(b); for (let i = 0; i < ka.length; i++) { if (ka[i] < kb[i]) return -1; if (ka[i] > kb[i]) return 1; } return 0; });
 }
 
-function skelCard(i) {
-  return html`<div class="rn-file rn-file-skel" aria-hidden="true" style="--d:${i * 70}ms">
-    <div class="rn-file-top"><span class="skel" style="width:48px;height:48px;border-radius:14px"></span>
-      <div style="flex:1;display:grid;gap:8px;padding-top:4px"><span class="skel" style="width:60%;height:16px"></span><span class="skel" style="width:40%;height:12px"></span></div></div>
-    <div class="rn-file-mid"><span class="skel" style="width:46%;height:34px"></span><span class="skel" style="width:30%;height:22px"></span></div>
-    <div class="rn-file-foot"><span class="skel" style="width:70%;height:12px"></span></div>
+function skelRow(i) {
+  return html`<div class="rn-file rn-file-skel" aria-hidden="true" style="--d:${i * 50}ms">
+    <div class="rn-file-row"><span class="skel" style="width:42px;height:42px;border-radius:12px"></span>
+      <div style="flex:1;display:grid;gap:8px"><span class="skel" style="width:46%;height:15px"></span><span class="skel" style="width:30%;height:12px"></span></div></div>
   </div>`;
 }
 
-function dropCard(isOwn, span = 1) {
-  return html`<div class="rn-file rn-drop${span > 1 ? ` is-wide is-span-${span}` : ''}" role="button" tabindex="0" data-pick aria-label="${isOwn ? 'Add more statement files' : 'Use my own statement files'}">
+function dropRow(isOwn) {
+  return html`<div class="rn-drop" role="button" tabindex="0" data-pick aria-label="${isOwn ? 'Add more statement files' : 'Use my own statement files'}">
     <span class="rn-drop-ic">${icon('upload')}</span>
     <span class="rn-drop-txt">
       <span class="rn-drop-t">${isOwn ? 'Add more files' : 'Use my own files'}</span>
-      <span class="rn-drop-s">Drop CSV or PDF statements here, or <u>choose files</u>. Up to 10 MB each.</span>
+      <span class="rn-drop-s">Drop bank or card statements here, or <u>choose files</u>. CSV or PDF, up to 10 MB each.</span>
     </span>
     ${isOwn ? html`<button type="button" class="btn btn-ghost btn-sm rn-drop-back" data-sample>Back to the sample files</button>` : ''}
   </div>`;
 }
 
-function fileCard(f, axis, i, removable) {
+function fileRow(f, i, removable) {
   const card = isCardFile(f.name, f.kind);
   const brand = fileBrand(f.name, f.kind);
   const months = f.ok ? f.months || [] : monthsFromName(f.name);
@@ -625,56 +581,24 @@ function fileCard(f, axis, i, removable) {
   const q = f.quarantined || [];
   const issue = f.ok ? null : fileIssue(f);
   const locked = !!issue && issue.t === 'needs_password';
-  const tone = issue ? issue.tone : q.length ? 'warn' : 'good';
-  const pill = !issue
-    ? (q.length
-      ? html`<span class="badge badge-warn rn-pill">${icon('alert')}${fmt.plural(q.length, 'row')} set aside</span>`
-      : html`<span class="badge badge-good rn-pill">${icon('check')}Read ${fmt.plural(f.transactions, 'transaction')}</span>`)
-    : html`<span class="badge ${issue.tone === 'bad' ? 'badge-bad' : 'badge-warn'} rn-pill">${icon(issue.tone === 'bad' ? 'x' : locked ? 'lock' : 'spark')}${issue.pill}</span>`;
-  const sub = [period ? period + (isPartial(f.name) ? ' (part)' : '') : '', card ? 'Card statement' : 'Bank statement'].filter(Boolean).join(' · ');
-  const cellCls = !issue ? 'on' : issue.tone === 'bad' ? 'bad' : 'wait';
-  const cellTip = !issue ? 'in this file' : issue.tone === 'bad' ? 'could not be read' : 'not read yet';
-  const cells = axis.map((m) => {
-    const inFile = months.includes(m);
-    return html`<span class="${inFile ? cellCls : ''}" title="${fmt.month(m, true)}${inFile ? `: ${cellTip}` : ''}"><i></i>${fmt.month(m)}</span>`;
-  });
   const glyph = issue ? (locked ? 'lock' : issue.tone === 'bad' ? 'fileX' : card ? 'card' : 'bank') : card ? 'card' : 'bank';
-  const head = html`
-    <div class="rn-file-top">
+  /* Your own file keeps its name, so you can tell which is which. The sample's names mean nothing to anyone. */
+  const sub = removable ? f.name : [period ? period + (isPartial(f.name) ? ' (part)' : '') : '', card ? 'Card statement' : 'Bank statement'].filter(Boolean).join(' · ');
+  return html`<article class="rn-file${issue ? ` is-${issue.tone}` : ''}" style="--d:${i * 50}ms">
+    <div class="rn-file-row">
       <span class="rn-glyph${issue ? ` is-${issue.tone}` : ''}">${icon(glyph)}</span>
-      ${pill}
-    </div>
-    <div class="rn-file-id">
-      <h3 class="rn-file-name">${brand}</h3>
-      <p class="rn-file-sub">${sub}</p>
-    </div>
-    <div class="rn-file-mid">
-      ${!issue
-        ? html`<div><div class="rn-file-amt">${fmt.inr(f.debits || 0)}</div><div class="rn-file-amt-l">spent${q.length ? html` · ${fmt.plural(f.transactions, 'transaction')} read` : ''}</div></div>`
-        : html`<div><div class="rn-file-amt is-none">${issue.amt}</div><div class="rn-file-amt-l">${issue.amtL}</div></div>`}
-      ${axis.length ? html`<div class="rn-cover" aria-label="Months in this file: ${period || 'not known'}">${cells}</div>` : ''}
-    </div>`;
-  const foot = html`
-    <div class="rn-file-foot">
-      <span class="rn-file-fn" title="${f.name}">${f.name}</span>
-      <span class="rn-file-size">${fmtSize(f.size || 0)}</span>
+      <div class="rn-file-id"><h3 class="rn-file-name">${brand}</h3><p class="rn-file-sub" title="${f.name}">${sub}</p></div>
+      ${issue
+        ? html`<span class="badge ${issue.tone === 'bad' ? 'badge-bad' : 'badge-warn'} rn-pill">${icon(issue.tone === 'bad' ? 'x' : locked ? 'lock' : 'spark')}${issue.pill}</span>`
+        : html`<div class="rn-file-end"><b>${fmt.plural(f.transactions, 'transaction')}</b><span>${fmt.inr(f.debits || 0)} spent</span></div>`}
       ${removable ? html`<button type="button" class="rn-file-x" data-remove="${f.name}" aria-label="Remove ${f.name}">${icon('trash')}</button>` : ''}
-    </div>`;
-  if (locked) {
-    return html`<article class="rn-file rn-file-warn rn-file-locked" style="--d:${i * 60}ms">
-      <div class="rn-file-locked-l">${head}</div>
-      <div class="rn-unlock-panel">
-        <p class="rn-unlock-lead"><b>Unlock it to include this file.</b> If you skip this, the audit runs without it and asks you later.</p>
-        ${unlockBox(f.name, i)}
-      </div>
-      ${foot}
-    </article>`;
-  }
-  return html`<article class="rn-file rn-file-${tone}" style="--d:${i * 60}ms">
-    ${head}
+    </div>
     ${!issue && q.length ? html`<div class="rn-file-note">${icon('alert')}<p><b>${q.length === 1 ? '1 row set aside.' : `${q.length} rows set aside.`}</b> ${rowProblem(q[0].reason)} It will not be guessed.${q.length > 1 ? ` ${q.length - 1} more like this.` : ''}</p></div>` : ''}
-    ${issue ? html`<div class="rn-file-note${issue.tone === 'bad' ? ' is-bad' : ''}">${icon(issue.tone === 'bad' ? 'xCircle' : 'info')}<p><b>${issue.lead}</b> ${issue.text}</p></div>` : ''}
+    ${issue && !locked ? html`<div class="rn-file-note${issue.tone === 'bad' ? ' is-bad' : ''}">${icon(issue.tone === 'bad' ? 'xCircle' : 'info')}<p><b>${issue.lead}</b> ${issue.text}</p></div>` : ''}
     ${issue && issue.t === 'unknown_format' ? html`<div class="rn-learn"><button type="button" class="btn btn-secondary btn-sm" data-learn="${f.name}">${icon('spark')}Learn this format</button><p class="rn-learn-msg" role="status" hidden></p></div>` : ''}
-    ${foot}
+    ${locked ? html`<div class="rn-unlock-panel">
+      <p class="rn-unlock-lead"><b>Unlock it to include this file.</b> Otherwise the audit runs without it.</p>
+      ${unlockBox(f.name, i)}
+    </div>` : ''}
   </article>`;
 }

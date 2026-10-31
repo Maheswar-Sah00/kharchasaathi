@@ -5,7 +5,7 @@
      #/run                       real run (POST /api/run) with store.session values
      #/run?mode=replay           replay the last finished run (free, no AI)
      #/run?mode=replay&goal=unsafe   safety refusal first, then the safe replay  */
-import { html, raw, mount, el, esc, $, $$, on, api, store, fmt, countUp, md, sleep, tip, navigate, DRAFT_KIND, DRAFT_STATUS } from '../core.js';
+import { html, raw, mount, el, esc, $, $$, on, api, store, fmt, countUp, md, sleep, tip, navigate, plain, DRAFT_KIND, DRAFT_STATUS } from '../core.js';
 import { icon, fileBrand, periodLabel, fileProblem, fileIssueType, rowProblem, monthsFromName, splitReasons, loadSession, DEFAULT_GOAL, unlockBox, toggleShowPw, tryUnlock } from './start.js';
 
 export const title = 'See every step';
@@ -54,50 +54,6 @@ const STEP_RULES = [
   [/\bfinish|\bsummar/i, ['finish']],
 ];
 
-/* The agent writes its plan for itself. Say the same thing in everyday words. */
-const PLAIN = [
-  [/\bquarantined(?=\s+(?:bank\s+)?rows?\b)/gi, 'set-aside'], [/\bquarantined?\b/gi, 'set aside'],
-  [/\bcorrupted\/password-protected\b/gi, 'damaged or locked'], [/\bcorrupt(ed)?\b/gi, 'damaged'],
-  [/\bcategori[sz]ation\b/gi, 'sorting'], [/\bcategori[sz]ing\b/gi, 'sorting'], [/\bcategori[sz]ed\b/gi, 'sorted'], [/\bcategori[sz]e\b/gi, 'sort'],
-  [/\bresolve low-confidence merchants\b/gi, 'check the shops it is unsure about'],
-  [/\blow-confidence merchants\b/gi, 'shops it is unsure about'], [/\blow-confidence\b/gi, 'unsure'],
-  [/\(lookup\/ask_user\)/gi, '(look them up or ask you)'], [/\bask_user\b/g, 'ask you'],
-  [/\bmerchants\b/gi, 'shops'], [/\bmerchant\b/gi, 'shop'],
-  [/\bparsed\b/gi, 'read'], [/\bparsing\b/gi, 'reading'], [/\bparse\b/gi, 'read'],
-  [/\bpost-cancellation charges\b/gi, 'charges after you cancelled'],
-  [/\bprice changes\b/gi, 'price rises'],
-  [/\bduplicates\b/gi, 'double charges'], [/\bduplicate\b/gi, 'double'],
-  [/\bdetect\b/gi, 'find'], [/\brecurring\b/gi, 'monthly'],
-  [/\bLLM\b/g, 'AI'], [/\be-?mandates?\b/gi, 'auto-debit'], [/\bNACH\b/g, 'auto-debit'],
-  [/\binvalid amount\b/gi, 'unreadable amount'],
-  [/\binstruction-like text\b/gi, 'text that looks like an instruction'],
-  [/\binjection\/phishing attempt\b/gi, 'scam'], [/\bprompt injection\b/gi, 'hidden instruction'],
-  [/\bfor user review\b/gi, 'for you to check'], [/\btell (the )?user\b/gi, 'tell you'], [/\bthe user's\b/gi, 'your'], [/(?<=\b(?:to|for|ask|tell|with|from) )the user\b/gi, 'you'],
-  [/\bre-download\b/gi, 'download it again'],
-];
-function plain(text) {
-  let s = String(text || '');
-  for (const [re, to] of PLAIN) s = s.replace(re, (m) => (m[0] === m[0].toUpperCase() && m[0] !== m[0].toLowerCase() ? cap(to) : to));
-  s = s.replace(/\b(20\d\d-\d\d-\d\d)\b/g, (m) => fmt.date(m, true));
-  return cap(s.trim());
-}
-
-/* Pretty JSON for "Show details" (escaped, lightly marked up). */
-const JSON_RE = /("(?:\\.|[^"\\])*")(\s*:)?|(-?\b\d+(?:\.\d+)?(?:e[+-]?\d+)?\b)|\b(true|false|null)\b/g;
-function jsonHTML(obj) {
-  const s = JSON.stringify(obj, null, 2) || '';
-  let out = '', last = 0, m;
-  JSON_RE.lastIndex = 0;
-  while ((m = JSON_RE.exec(s))) {
-    out += esc(s.slice(last, m.index)); last = m.index + m[0].length;
-    if (m[1]) out += m[2] ? `<span class="k">${esc(m[1])}</span>${esc(m[2])}` : `<span class="s">${esc(m[1])}</span>`;
-    else if (m[3]) out += `<span class="n">${m[3]}</span>`;
-    else out += `<span class="l">${m[4]}</span>`;
-  }
-  return raw(out + esc(s.slice(last)));
-}
-const dtBtn = () => html`<button type="button" class="rn-dt" data-dt aria-expanded="false" title="Show details"><span>Details</span>${icon('chevron')}</button>`;
-const dtBody = (data) => html`<pre class="rn-json" hidden>${jsonHTML(data)}</pre>`;
 const dot = (v) => raw(`<i class="rn-dot-i" style="background:var(${v})"></i>`);
 
 /* ===================================================================== */
@@ -109,22 +65,21 @@ export async function render(root, ctx) {
   const R = {
     t0: performance.now(), ended: false, ok: false, failed: false, started: false,
     files: 0, fileStatus: new Map(), rows: 0, setAside: 0, sorted: 0,
-    problems: 0, back: 0, drafts: 0, expected: 0, subsMonthly: 0, subsCount: 0, target: null,
+    problems: 0, back: 0, drafts: 0, draftTurns: 0, alreadySent: 0, expected: 0, subsMonthly: 0, subsCount: 0, target: null,
     ran: new Set(), running: new Map(), maxPhase: -1, names: new Map(), findings: new Map(),
     plans: [], tools: 0, goal: null, status: '', ctr: {}, follow: true, endVisible: true, help: [],
   };
 
   const lead = unsafe
-    ? 'A safety test. Someone asks the agent to send emails without asking and to move money. Watch what it refuses, and what it still does.'
+    ? 'Watch what it refuses, and what it still does.'
     : replay
-      ? 'This is a recorded run of a real audit, played back at its real pace. No AI is used, so it is free. Each card below is one thing the agent did, in plain words.'
-      : 'The agent is working through your statements now. Each card below is one thing it did, in plain words. It can only draft emails, so nothing is sent until you say yes.';
+      ? 'A real audit, played back. No AI is used.'
+      : 'Each card below is one thing the agent did.';
 
   mount(root, html`
     <div class="rn-run page">
       <header class="rn-head">
         <div class="rn-meta">
-          <span class="rn-stepchip"><b>Step 3</b><span>See every step</span></span>
           <span class="rn-mode" id="rn-mode">${replay ? html`${icon('play')}Recorded run` : html`<i class="rn-live"></i>Live`}</span>
           ${unsafe ? html`<span class="rn-mode rn-mode-safety">${icon('shield')}Safety test</span>` : ''}
           <span class="rn-clock" id="rn-clock" aria-label="Time so far">0:00</span>
@@ -162,7 +117,6 @@ export async function render(root, ctx) {
                 <div class="rn-ctr" data-k="${k}"><span class="rn-ctr-v" data-ctr="${k}">${k === 'back' ? '₹0' : '0'}</span><span class="rn-ctr-l">${l}</span></div>`)}
             </div>
             <p class="rn-psub" id="rn-psub" hidden></p>
-            <div class="rn-pfoot">${icon('shield')}<span>It can only draft emails. Nothing is sent until you approve it, and it has no way to move money.</span></div>
             <div class="rn-pcta" id="rn-pcta" hidden>
               <a class="btn btn-primary" href="#/report">See your report ${icon('arrowRight')}</a>
               <a class="btn btn-secondary" href="#/emails">Read the emails</a>
@@ -186,16 +140,27 @@ export async function render(root, ctx) {
   const stopClock = () => { clearInterval(timer); tick(); };
   const now = () => clock(performance.now() - R.t0);
 
-  /* ---------- status line (serif, crossfades) ---------- */
-  function setStatus(text) {
-    if (!text || R.status === text) return;
-    R.status = text;
+  /* ---------- status line (serif, crossfades). Each line stays long enough to read. ---------- */
+  const STATUS_MIN_MS = 1200;
+  let statusAt = -STATUS_MIN_MS, statusTimer = 0, statusNext = null;
+  function showStatus(text) {
     const h = $('#rn-status', root);
+    if (!h) return;
+    statusAt = performance.now();
     [...h.children].forEach((old) => { old.classList.add('is-out'); setTimeout(() => old.remove(), 420); });
     const s = document.createElement('span'); s.className = 'is-in'; s.textContent = text;
     h.appendChild(s);
+  }
+  function setStatus(text, atOnce = false) {
+    if (!text || R.status === text) return;
+    R.status = text;
     $('#rn-ptext', root).textContent = text;
     $('#rn-hud-t', root).textContent = text;
+    const wait = atOnce ? 0 : STATUS_MIN_MS - (performance.now() - statusAt);
+    clearTimeout(statusTimer);
+    if (wait <= 0) { statusNext = null; showStatus(text); return; }
+    statusNext = text;
+    statusTimer = setTimeout(() => { if (statusNext) showStatus(statusNext); statusNext = null; }, wait);
   }
 
   /* ---------- follow the newest row ---------- */
@@ -268,7 +233,7 @@ export async function render(root, ctx) {
       case 'sort': return R.ran.has('categorize_transactions') ? 1 : R.running.has('categorize_transactions') ? 0.4 : 0;
       case 'find': return ['detect_subscriptions', 'detect_duplicates', 'detect_price_changes'].filter((t) => R.ran.has(t)).length / 3;
       case 'budget': return R.ran.has('build_budget') ? 1 : R.running.has('build_budget') ? 0.4 : 0;
-      case 'emails': return R.ran.has('finish') ? 1 : R.expected ? Math.min(0.95, R.drafts / R.expected) : R.drafts ? 0.5 : 0;
+      case 'emails': return R.ran.has('finish') ? 1 : R.expected ? Math.min(0.95, R.draftTurns / R.expected) : R.draftTurns ? 0.5 : 0;
       default: return 0;
     }
   }
@@ -279,7 +244,7 @@ export async function render(root, ctx) {
       case 'sort': return R.sorted ? `${fmt.n(R.sorted)} sorted${R.asks ? ` · ${fmt.plural(R.asks, 'question')}` : ''}` : 'Sorting';
       case 'find': return R.ran.has('detect_subscriptions') ? `${fmt.plural(R.problems, 'problem')} found` : 'Looking';
       case 'budget': return R.target != null ? `Save ${R.target}%` : 'Building';
-      case 'emails': return R.drafts ? `${fmt.plural(R.drafts, 'email')} drafted` : 'Writing';
+      case 'emails': return R.drafts ? `${fmt.plural(R.drafts, 'email')} drafted` : R.alreadySent ? 'Already sent' : 'Writing';
       default: return '';
     }
   }
@@ -310,14 +275,13 @@ export async function render(root, ctx) {
     const li = el(html`<li class="rn-item rn-plan-item${isRe ? ' is-replan' : ''}">
       <div class="rn-node${isRe ? ' rn-node-amber' : ''}">${icon(isRe ? 'branch' : 'list')}</div>
       <div class="rn-card rn-plan${isRe ? ' rn-replan' : ''}">
-        <div class="rn-row"><p class="rn-kicker">${isRe ? 'Changed its plan' : 'Its plan'}</p><span class="rn-row-end">${dtBtn()}<span class="rn-time">${now()}</span></span></div>
+        <div class="rn-row"><p class="rn-kicker">${isRe ? 'Changed its plan' : 'Its plan'}</p><span class="rn-time">${now()}</span></div>
         ${isRe
           ? html`<p class="rn-why"><b>Why:</b> ${plain(e.reason || 'Something unexpected came up.')}</p><p class="rn-plan-lead">The new plan has ${fmt.plural(steps.length, 'step')}.</p>`
           : html`<p class="rn-plan-lead">${fmt.plural(steps.length, 'step')}. It ticks each one off as it goes.</p>`}
         <ol class="rn-steps${steps.length > 5 ? ' is-cols' : ''}">
           ${steps.map((s, i) => html`<li class="rn-step" data-s="todo"><span class="rn-step-mark"><span class="n">${i + 1}</span>${icon('check')}</span><span class="rn-step-t">${s.text}</span></li>`)}
         </ol>
-        ${dtBody({ steps: e.steps, reason: e.reason })}
       </div></li>`);
     feed.appendChild(li);
     R.plans.push({ steps, els: $$('.rn-step', li) });
@@ -384,7 +348,7 @@ export async function render(root, ctx) {
     detect_duplicates: 'Checking for double charges…',
     detect_price_changes: 'Checking for price rises…',
     build_budget: 'Building your budget…',
-    draft_email: () => (R.drafts === 0 ? `Writing ${R.expected ? fmt.plural(R.expected, 'email') : 'emails'}…` : `Writing email ${R.drafts + 1}${R.expected ? ` of ${R.expected}` : ''}…`),
+    draft_email: () => (R.draftTurns === 0 ? `Writing ${R.expected ? fmt.plural(R.expected, 'email') : 'emails'}…` : `Writing email ${R.draftTurns + 1}${R.expected ? ` of ${R.expected}` : ''}…`),
     finish: 'Writing your summary…',
     learn_csv_format: 'Learning a new bank layout…',
     upcoming_renewals: 'Checking what renews next…',
@@ -598,6 +562,14 @@ export async function render(root, ctx) {
     },
     draft_email(o, i) {
       if (o.error) return { tone: 'warn', say: `Could not write that email: ${plain(o.error)}.` };
+      R.draftTurns++;
+      if (o.not_drafted) {
+        R.alreadySent++;
+        return {
+          say: html`${cap(draftWhat(i))} was already sent${o.sent_at ? ` on ${fmt.date(o.sent_at)}` : ''}, so it did not write it again. <span class="badge badge-good rn-inline-badge">Sent</span>`,
+          more: o.already_sent ? html`<p class="rn-subject"><span>Subject</span>${o.already_sent}</p>` : '',
+        };
+      }
       R.drafts++;
       const st = DRAFT_STATUS[o.status] || DRAFT_STATUS.PENDING_APPROVAL;
       return {
@@ -676,9 +648,7 @@ export async function render(root, ctx) {
     if (d.tone) li.dataset.tone = d.tone;
     if (d.icon) mount($('.rn-node-ic', li), icon(d.icon));
     mount($('.rn-say', li), d.say);
-    const payload = Object.keys(inp).length ? { input: inp, output: e.output } : { output: e.output };
-    mount($('.rn-more', li), html`${d.more || ''}${dtBody(payload)}`);
-    $('.rn-row-end', li).insertAdjacentHTML('afterbegin', String(dtBtn()));
+    mount($('.rn-more', li), html`${d.more || ''}`);
     const pr = $('.rn-prog', li); if (pr) pr.remove();
     paintCounters(); paintPhases(); evalPlans(); afterAdd();
   }
@@ -690,7 +660,7 @@ export async function render(root, ctx) {
     const li = el(html`<li class="rn-item rn-help-item is-running"${canUnlock ? html` data-file="${inp.filename}"` : ''}>
       <div class="rn-node rn-node-ink">${icon(pw ? 'lock' : 'help')}</div>
       <div class="rn-card rn-help">
-        <div class="rn-row"><p class="rn-kicker">Needs your help</p><span class="rn-row-end">${dtBtn()}<span class="rn-time">${now()}</span></span></div>
+        <div class="rn-row"><p class="rn-kicker">Needs your help</p><span class="rn-time">${now()}</span></div>
         <p class="rn-help-q${String(inp.question || '').length > 110 ? ' is-long' : ''}">${plain(inp.question) || 'It has a question for you.'}</p>
         ${pw && inp.filename ? html`<div class="rn-chips"><span class="rn-chip rn-chip-mono">${icon('lock')}${inp.filename}</span></div>` : ''}
         <p class="rn-sub rn-help-s">${pw
@@ -702,7 +672,6 @@ export async function render(root, ctx) {
             <button type="button" class="btn btn-primary" data-rerun>${icon('retry')}Run the audit again</button>
             <p class="rn-sub rn-rerun-wait">You can run it again when this audit finishes.</p>
           </div>` : ''}
-        ${dtBody({ input: inp })}
       </div></li>`);
     R.help.push(li);
     feed.appendChild(li);
@@ -734,14 +703,14 @@ export async function render(root, ctx) {
     if (li) { li.classList.remove('is-running'); const s = $('.rn-help-s', li); if (s && !li.dataset.file && !$('.rn-chip-mono', li)) s.insertAdjacentHTML('afterbegin', `<span class="rn-saved">${icon('check')}Saved for you.</span> `); }
   }
   function addRefusal(request, reason, big = false) {
-    const why = splitReasons(reason);
+    const why = splitReasons(reason).map((w) => (w.match(/^.*?[.!?](?=\s|$)/) || [w])[0]);
     feed.appendChild(el(html`<li class="rn-item rn-refusal-item${big ? ' is-big' : ''}">
       <div class="rn-node rn-node-bad">${icon('shieldX')}</div>
       <div class="rn-card rn-refusal">
-        <div class="rn-row">${big ? html`<h2 class="rn-refusal-h">Refused.</h2>` : html`<span class="badge badge-bad">${icon('x')}Refused</span>`}<span class="rn-time">${now()}</span></div>
-        ${request ? html`<p class="rn-refusal-ask"><span class="rn-refusal-l">The request</span>“${request}”</p>` : ''}
+        <div class="rn-row"><span class="badge badge-bad">${icon('x')}Refused</span><span class="rn-time">${now()}</span></div>
+        ${request ? html`<p class="rn-refusal-ask">“${request}”</p>` : ''}
         <ul class="rn-refusal-why">${why.map((w) => html`<li>${icon('xCircle')}<span>${w}</span></li>`)}</ul>
-        <p class="rn-sub">This check runs before the AI starts work. ${big ? 'The safe part of the audit continues below.' : 'It goes on with the safe part of the audit.'}</p>
+        ${big ? '' : html`<p class="rn-sub">It goes on with the safe part of the audit.</p>`}
       </div></li>`));
     afterAdd();
   }
@@ -790,14 +759,14 @@ export async function render(root, ctx) {
     feed.appendChild(el(html`<li class="rn-item rn-error-item${V.calm ? ' is-calm' : ''}">
       <div class="rn-node${V.calm ? '' : ' rn-node-bad'}">${icon(V.icon)}</div>
       <div class="rn-card rn-error" role="alert">
-        <div class="rn-row"><p class="rn-error-t">${V.title}</p><span class="rn-row-end">${text ? dtBtn() : ''}<span class="rn-time">${now()}</span></span></div>
+        <div class="rn-row"><p class="rn-error-t">${V.title}</p><span class="rn-time">${now()}</span></div>
         <p class="rn-error-b">${V.body}</p>
         <div class="rn-actions">
           <a class="btn btn-primary" href="${V.primary[0]}">${V.primary[2] === 'play' ? icon('play') : ''}${V.primary[1]}${V.primary[2] === 'arrowRight' ? icon('arrowRight') : ''}</a>
           ${V.retry ? html`<button type="button" class="btn btn-secondary" data-retry>${icon('retry')}Try again</button>` : ''}
           ${V.secondary ? html`<a class="btn btn-ghost" href="${V.secondary[0]}">${V.secondary[1]}</a>` : ''}
         </div>
-        ${text ? dtBody({ error: text }) : ''}
+        ${text ? html`<details class="rn-errmore"><summary>What the server said</summary><pre class="rn-json">${text}</pre></details>` : ''}
       </div></li>`));
     /* Failed before any step ran: no empty progress bar or zero counters, just the way forward. */
     const early = R.tools === 0;
@@ -833,7 +802,7 @@ export async function render(root, ctx) {
       return;
     }
     paintPhases(); evalPlans(); paintCounters();
-    setStatus('Done. Here is what I found.');
+    setStatus('Done. Here is what it found.', true);
     setMode('done');
     const qs = e.questions || [];
     const stats = [
@@ -843,16 +812,16 @@ export async function render(root, ctx) {
       [fmt.n(R.drafts), e.replay ? (R.drafts === 1 ? 'email written' : 'emails written') : (R.drafts === 1 ? 'email waiting for you' : 'emails waiting for you')],
     ];
     const took = clock(performance.now() - R.t0);
+    const notAgain = !R.alreadySent ? '' : ` It did not write ${R.alreadySent === 1 ? 'one' : fmt.n(R.alreadySent)} again, because you already sent ${R.alreadySent === 1 ? 'it' : 'them'}.`;
     const fin = $('#rn-finale', root);
     mount(fin, html`
       <div class="rn-final-top">
         <div class="rn-final-say">
           <div class="rn-final-meta">
             <span class="rn-final-tag">${e.replay ? html`${icon('play')}Recorded run` : html`${icon('check')}Finished in ${took}`}</span>
-            <span class="rn-final-note">${e.replay ? 'Played back from the saved log. No AI was used.' : e.llm_calls ? `Used the AI ${fmt.plural(e.llm_calls, 'time')}.` : ''}</span>
           </div>
           <h2 class="rn-done">Done.</h2>
-          <p class="rn-done-sub">Here is what it found in ${fmt.n(R.rows)} transactions${R.target != null ? `, with a plan to save ${R.target}%` : ''}. <span data-rn-emails>${e.replay ? '' : R.drafts ? 'Nothing has been sent. The emails wait for you.' : 'It did not need to write any emails.'}</span></p>
+          <p class="rn-done-sub">Here is what it found in ${fmt.n(R.rows)} transactions${R.target != null ? `, with a plan to save ${R.target}%` : ''}. <span data-rn-emails>${e.replay ? '' : R.drafts ? `${R.drafts === 1 ? 'The email is' : 'The emails are'} waiting for you.${notAgain}` : R.alreadySent ? `No new emails.${notAgain}` : 'It did not need to write any emails.'}</span></p>
           <div class="rn-actions">
             <a class="btn btn-lg rn-btn-a" href="#/report">See your report ${icon('arrowRight')}</a>
             <a class="btn btn-lg rn-btn-b" href="#/emails">${icon('mail')}Read the emails</a>
@@ -862,7 +831,7 @@ export async function render(root, ctx) {
           ${stats.map(([v, l]) => html`<div class="rn-fs"><span class="rn-fs-v">${v}</span><span class="rn-fs-l">${l}</span></div>`)}
         </div>
       </div>
-      ${qs.slice(0, 3).map((q, i) => html`<div class="rn-final-q">${icon(q.kind === 'password' ? 'lock' : 'help')}<p>${i === 0 ? html`<b>${fmt.plural(qs.length, 'question')} for you.</b> ` : ''}${plain(q.question)}</p>${q.kind === 'password' && q.filename ? html`<button type="button" class="btn btn-sm rn-btn-b" data-goto-file="${q.filename}">Unlock the file</button>` : ''}</div>`)}
+      ${qs.slice(0, 3).map((q, i) => html`<div class="rn-final-q">${icon(q.kind === 'password' ? 'lock' : 'help')}<p>${i === 0 ? html`<b>${fmt.plural(qs.length, 'question')} for you.</b> ` : ''}${plain(q.question)}</p>${q.kind === 'password' && q.filename ? html`<button type="button" class="btn btn-sm rn-btn-b" data-goto-file="${q.filename}">Unlock the file</button>` : html`<a class="btn btn-sm rn-btn-b" href="#/transactions">Answer it</a>`}</div>`)}
       <details class="rn-summary">
         <summary><span class="rn-show">Read its full summary</span><span class="rn-hide">Hide the summary</span>${icon('chevron')}</summary>
         <div class="md">${md(stripEmoji(summary))}</div>
@@ -876,8 +845,8 @@ export async function render(root, ctx) {
         const sent = all.filter((d) => d.status === 'SENT').length;
         const waiting = all.filter((d) => d.status === 'PENDING_APPROVAL').length;
         line.textContent = sent
-          ? `Since this run, ${fmt.n(sent)} of its emails ${sent === 1 ? 'has' : 'have'} been sent${waiting ? ` and ${fmt.n(waiting)} still ${waiting === 1 ? 'waits' : 'wait'} for you` : ''}.`
-          : waiting ? `Nothing has been sent. ${waiting === 1 ? '1 email waits' : `${fmt.n(waiting)} emails wait`} for you.` : 'No emails are waiting for you.';
+          ? `Since this run, ${fmt.n(sent)} of its emails ${sent === 1 ? 'has' : 'have'} been sent${waiting ? ` and ${fmt.n(waiting)} still ${waiting === 1 ? 'waits' : 'wait'} for you` : ''}.${notAgain}`
+          : waiting ? `${R.alreadySent ? '' : 'Nothing has been sent. '}${waiting === 1 ? '1 email waits' : `${fmt.n(waiting)} emails wait`} for you.${notAgain}` : `No emails are waiting for you.${notAgain}`;
       }).catch(() => {});
     }
     fin.hidden = false;
@@ -945,7 +914,6 @@ export async function render(root, ctx) {
         if (p && !p.allowed) { addRefusal(UNSAFE_GOAL, p.reason, true); setStatus('Refused. Doing the safe part…'); }
         await sleep(reduced() ? 0 : 1600);
         if (ac.signal.aborted) return;
-        feed.appendChild(el(html`<li class="rn-divider"><span>The safe part of the audit</span></li>`));
       }
       if (replay) { await runReplay(null); }
       else {
@@ -966,13 +934,6 @@ export async function render(root, ctx) {
       else addError('ai', err && err.message);
     }
   }
-  const offDt = on(root, 'click', '[data-dt]', (e, b) => {
-    const open = b.getAttribute('aria-expanded') !== 'true';
-    b.setAttribute('aria-expanded', String(open));
-    b.title = open ? 'Hide details' : 'Show details';
-    const pre = $('.rn-json', b.closest('.rn-card'));
-    if (pre) pre.hidden = !open;
-  });
   const offPw = [
     on(root, 'click', '[data-showpw]', (e, b) => toggleShowPw(b)),
     on(root, 'submit', '[data-unlock]', async (e, form) => {
@@ -1002,7 +963,7 @@ export async function render(root, ctx) {
     endObs.disconnect(); headObs.disconnect();
     removeEventListener('wheel', onWheel); removeEventListener('keydown', onKey);
     removeEventListener('touchstart', onTouchStart); removeEventListener('touchmove', onTouchMove);
-    offPw.forEach((f) => f()); offDt(); offRetry(); offNote(); offTip();
+    offPw.forEach((f) => f()); offRetry(); offNote(); offTip();
     jump.remove();
   };
 }

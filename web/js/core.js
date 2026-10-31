@@ -78,6 +78,38 @@ export const GROUP = {
   up:   { label: 'Price went up',  hint: 'Same thing, higher price. Check it is still worth it.', color: 'var(--c-red)', soft: 'var(--c-red-soft)', text: 'var(--t-bad)' },
   keep: { label: 'Fine for now',   hint: 'Nothing to do.',                              color: 'var(--ink-4)', soft: 'var(--bg-sunk)', text: 'var(--ink-3)' },
 };
+/* ---------- Plain English ----------
+   The agent writes its plans, questions and errors for itself. plain() says the same thing in everyday words. */
+const PLAIN = [
+  [/\btreated as data only and marked suspicious\b/gi, 'only read, not obeyed, and it is flagged for you'], [/\btreated as data only\b/gi, 'only read, not obeyed'],
+  [/\breview it in the app\b/gi, 'look at it'],
+  [/\bquarantined(?=\s+(?:bank\s+)?rows?\b)/gi, 'set-aside'], [/\bquarantined?\b/gi, 'set aside'],
+  [/\bcorrupted\/password-protected\b/gi, 'damaged or locked'], [/\bcorrupt(ed)?\b/gi, 'damaged'],
+  [/\bcategori[sz]ation\b/gi, 'sorting'], [/\bcategori[sz]ing\b/gi, 'sorting'], [/\bcategori[sz]ed\b/gi, 'sorted'], [/\bcategori[sz]e\b/gi, 'sort'],
+  [/\bresolve low-confidence merchants\b/gi, 'check the shops it is unsure about'],
+  [/\blow-confidence merchants\b/gi, 'shops it is unsure about'], [/\blow-confidence\b/gi, 'unsure'],
+  [/\(lookup\/ask_user\)/gi, '(look them up or ask you)'], [/\bask_user\b/g, 'ask you'], [/\bask user\b/gi, 'ask you'], [/\bdetectors\b/gi, 'checks'], [/\bdetector\b/gi, 'check'], [/\bre-?run (the|this) audit\b/gi, 'run the audit again'],
+  [/\bmerchants\b/gi, 'shops'], [/\bmerchant\b/gi, 'shop'],
+  [/\bparsed\b/gi, 'read'], [/\bparsing\b/gi, 'reading'], [/\bparse\b/gi, 'read'],
+  [/\bpost-cancellation charges\b/gi, 'charges after you cancelled'],
+  [/\bprice changes\b/gi, 'price rises'],
+  [/\bduplicates\b/gi, 'double charges'], [/\bduplicate\b/gi, 'double'],
+  [/\bdetect\b/gi, 'find'], [/\brecurring\b/gi, 'monthly'],
+  [/\bLLM\b/g, 'AI'], [/\be-?mandates?\b/gi, 'auto-debit'], [/\bNACH\b/g, 'auto-debit'],
+  [/\binvalid amount\b/gi, 'unreadable amount'],
+  [/\binstruction-like text\b/gi, 'text that looks like an instruction'],
+  [/\binjection\/phishing attempt\b/gi, 'scam'], [/\bprompt injection\b/gi, 'hidden instruction'],
+  [/\bfor user review\b/gi, 'for you to check'], [/\btell (the )?user\b/gi, 'tell you'], [/\bthe user's\b/gi, 'your'], [/(?<=\b(?:to|for|ask|tell|with|from) )the user\b/gi, 'you'],
+  [/\bre-download\b/gi, 'download it again'],
+];
+export function plain(text) {
+  let s = String(text || '');
+  for (const [re, to] of PLAIN) s = s.replace(re, (m) => (m[0] === m[0].toUpperCase() && m[0] !== m[0].toLowerCase() ? to.charAt(0).toUpperCase() + to.slice(1) : to));
+  s = s.replace(/\b(20\d\d-\d\d-\d\d)\b/g, (m) => fmt.date(m, true));
+  const t = s.trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
 export const SOURCE_LABEL = { memory: 'Your earlier fix', rule: 'Known shop', llm: 'AI guess', 'agent+web': 'Web lookup', safety: 'Safety check' };
 export const DRAFT_KIND = { dispute: 'Dispute', refund: 'Refund request', cancellation: 'Cancel request', escalation: 'Escalation' };
 export const DRAFT_STATUS = {

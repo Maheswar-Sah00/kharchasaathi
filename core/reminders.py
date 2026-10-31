@@ -2,7 +2,8 @@
 
 Guardrails
 - Only ever calls ONE allowlisted address (LINPHONE_CALL_TO in .env). There is no API to call anyone else.
-- Scheduled calls happen only after the user opts in; "Call me now" is an explicit user action.
+- A finished audit calls if a renewal is close (the user can switch this off). Daily scheduled calls need an opt-in.
+- Scheduled calls stay within waking hours and give up after a few unanswered attempts in a day.
 - The spoken script never contains card/account numbers, OTPs or CVVs (scrubbed after generation).
 - Rate limited, and every call attempt is written to the audit log.
 """
@@ -11,19 +12,25 @@ from . import db, llm, sip_call
 
 SETUP_SQL = """
 CREATE TABLE IF NOT EXISTS reminder_settings(id INTEGER PRIMARY KEY CHECK(id=1), enabled INT DEFAULT 0,
-  days_before INT DEFAULT 2, monthly INT DEFAULT 1, updated_at TEXT);
+  days_before INT DEFAULT 7, monthly INT DEFAULT 1, updated_at TEXT, after_audit INT DEFAULT 1);
 CREATE TABLE IF NOT EXISTS reminder_calls(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, mode TEXT, key TEXT,
   script TEXT, status TEXT, detail TEXT);
 """
 MIN_GAP_SECONDS = 60
 CALLER_NAME = "Priya"
+CALL_HOURS = (9, 21)  # scheduled calls only from 9 am to 9 pm
+MAX_SCHEDULED_ATTEMPTS = 3  # per day, per kind of call
 _lock = threading.Lock()
 
 
 def _setup():
     with db.conn() as c:
         c.executescript(SETUP_SQL)
-        c.execute("INSERT OR IGNORE INTO reminder_settings(id,enabled,days_before,monthly,updated_at) VALUES(1,0,2,1,?)",
+        if "after_audit" not in {r[1] for r in c.execute("PRAGMA table_info(reminder_settings)")}:
+            # older database: add the switch and move to the "within a week" rule
+            c.execute("ALTER TABLE reminder_settings ADD COLUMN after_audit INT DEFAULT 1")
+            c.execute("UPDATE reminder_settings SET days_before=7")
+        c.execute("INSERT OR IGNORE INTO reminder_settings(id,enabled,days_before,monthly,updated_at,after_audit) VALUES(1,0,7,1,?,1)",
                   (db.now(),))
         c.commit()
 
@@ -41,15 +48,18 @@ def config():
 
 def settings():
     _setup()
-    return db.q("SELECT enabled, days_before, monthly, updated_at FROM reminder_settings WHERE id=1", one=True)
+    return db.q("SELECT enabled, days_before, monthly, after_audit, updated_at FROM reminder_settings WHERE id=1", one=True)
 
 
-def save_settings(enabled: bool, days_before: int, monthly: bool):
+def save_settings(enabled: bool, days_before: int, monthly: bool, after_audit: bool | None = None):
     _setup()
     days_before = max(1, min(int(days_before), 7))
-    db.x("UPDATE reminder_settings SET enabled=?, days_before=?, monthly=?, updated_at=? WHERE id=1",
-         (int(enabled), days_before, int(monthly), db.now()))
-    db.log(None, "user", "reminder_settings", {"enabled": enabled, "days_before": days_before, "monthly": monthly})
+    if after_audit is None:
+        after_audit = bool(settings()["after_audit"])
+    db.x("UPDATE reminder_settings SET enabled=?, days_before=?, monthly=?, after_audit=?, updated_at=? WHERE id=1",
+         (int(enabled), days_before, int(monthly), int(after_audit), db.now()))
+    db.log(None, "user", "reminder_settings", {"enabled": enabled, "days_before": days_before, "monthly": monthly,
+                                               "after_audit": after_audit})
     return settings()
 
 
@@ -208,24 +218,60 @@ def place_call(script: str, mode="manual", key="manual"):
 
 
 # ------------------------------------------------------------------ scheduler (opt-in)
-def due_calls(today=None):
-    """Which scheduled calls are due today and haven't been made yet."""
-    today = today or datetime.date.today()
+def renewals_within(days, today=None):
+    """Renewals from the latest audit that fall within `days` days from today."""
+    return [u for u in upcoming(today=today) if u["days_left"] <= days]
+
+
+def _renewal_key(items):
+    return "renewal:" + ",".join(sorted(f"{u['merchant']}@{u['date']}" for u in items))
+
+
+def due_calls(today=None, now=None):
+    """Which scheduled calls are due now. Each renewal gets one answered call; unanswered ones retry a limited number of times."""
+    now = now or datetime.datetime.now()
+    today = today or now.date()
     s = settings()
-    if not s or not s["enabled"]:
+    if not s or not s["enabled"] or not CALL_HOURS[0] <= now.hour < CALL_HOURS[1]:
         return []
-    done = {r["key"] for r in db.q("SELECT key FROM reminder_calls WHERE status='answered'")}
+    answered = {r["key"] for r in db.q("SELECT key FROM reminder_calls WHERE status='answered'")}
+    called = {part for k in answered if k.startswith("renewal:") for part in k[8:].split(",")}
+
+    def gave_up(mode):
+        n = db.q("SELECT COUNT(*) n FROM reminder_calls WHERE status='failed' AND mode=? AND ts LIKE ? AND key NOT LIKE 'manual:%'",
+                 (mode, today.isoformat() + "%"), one=True)["n"]
+        return n >= MAX_SCHEDULED_ATTEMPTS
+
     due = []
-    ups = [u for u in upcoming(today=today) if u["days_left"] == s["days_before"]]
-    if ups:
-        key = "renewal:" + today.isoformat()
-        if key not in done:
-            due.append(("renewal", key))
+    fresh = [u for u in renewals_within(s["days_before"], today) if f"{u['merchant']}@{u['date']}" not in called]
+    if fresh and not gave_up("renewal"):
+        due.append(("renewal", _renewal_key(fresh)))
     if s["monthly"] and today.day == 1:
         key = "monthly:" + today.strftime("%Y-%m")
-        if key not in done:
+        if key not in answered and not gave_up("monthly"):
             due.append(("monthly", key))
     return due
+
+
+def after_audit(name="Arjun", today=None):
+    """Run after every finished audit: if a renewal is close, call straight away. Never raises."""
+    try:
+        s = settings()
+        _, missing = config()
+        items = renewals_within(s["days_before"], today)
+        reason = ("switched off" if not s["after_audit"] else "calls not set up" if missing else
+                  f"no renewal within {s['days_before']} days" if not items else "")
+        if reason:
+            db.log(None, "agent", "after_audit_no_call", {"reason": reason})
+            return {"called": False, "reason": reason}
+        sc = make_script("renewal", name=name, days_ahead=s["days_before"], today=today)
+        if not sc["script"]:
+            return {"called": False, "reason": "nothing to say"}
+        res = place_call(sc["script"], mode="renewal", key=_renewal_key(items))
+        return {"called": True, "script": sc["script"], **res}
+    except Exception as e:
+        db.log(None, "agent", "after_audit_call_error", {"error": str(e)})
+        return {"called": False, "reason": str(e)}
 
 
 def _tick(name="Arjun"):

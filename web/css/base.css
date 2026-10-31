@@ -27,7 +27,7 @@
   /* ink: near-black, never pure #000 */
   --ink: #0B0B0C;
   --ink-2: #3D3D42;         /* body copy */
-  --ink-3: #74747B;         /* secondary / captions */
+  --ink-3: #6B6B72;         /* secondary / captions */
   --ink-4: #A6A6AC;         /* disabled, axis ticks */
 
   /* inverse (primary buttons, dark bands) */
@@ -150,10 +150,10 @@
   --c-violet-soft:  rgba(144, 133, 233, .17);
   --c-red-soft:     rgba(230, 103, 103, .16);
 
-  --c-blue-2:   #2c5d99;
-  --c-orange-2: #9c4a2a;
-  --c-red-2:    #9a4643;
-  --c-aqua-2:   #1f6f53;
+  --c-blue-2:   #4a7fc2;
+  --c-orange-2: #d08a68;
+  --c-red-2:    #cf8583;
+  --c-aqua-2:   #4fa98a;
 
   --t-good: #4ACB7E;
   --t-bad:  #FF7A72;
@@ -340,7 +340,7 @@ button.chip:hover { border-color: var(--line-strong); color: var(--ink); }
   transition: border-color var(--dur-2), box-shadow var(--dur-2);
 }
 .textarea { resize: vertical; min-height: 96px; }
-.input::placeholder, .textarea::placeholder { color: var(--ink-4); }
+.input::placeholder, .textarea::placeholder { color: var(--ink-3); }
 .input:focus, .textarea:focus, .select:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 4px var(--focus); }
 .input-affix { position: relative; display: flex; align-items: center; }
 .input-affix .input { padding-left: 34px; }
@@ -485,6 +485,7 @@ input[type="range"].range:active::-webkit-slider-thumb { transform: scale(1.12);
 
 /* ---------- 18. Route error card ---------- */
 .route-error { max-width: 640px; margin: 80px auto; text-align: center; }
+body[data-route="start"] [data-cta], body[data-route="run"] [data-cta] { display: none; }
 .route-error pre { text-align: left; white-space: pre-wrap; font-size: 12.5px; background: var(--bg-sunk); padding: 14px; border-radius: 12px; color: var(--ink-3); }
 
 /* ---------- 19. Markdown (agent summary) ---------- */

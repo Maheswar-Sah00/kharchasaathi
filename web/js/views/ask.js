@@ -201,7 +201,7 @@ function noAuditView() {
   return html`<div class="page rv-ask-page"><header class="rv-ask-hero">
     <p class="rv-ask-eyebrow">${SPARK}Ask AI</p>
     <h1 class="h1">Nothing to ask about yet.</h1>
-    <p class="lead">Run an audit first. Then you can ask about your spending, your subscriptions and your budget, in your own words.</p>
+    <p class="lead">Run an audit first.</p>
     <div class="rv-ask-cta"><a class="btn btn-primary" href="#/start">Start an audit <span aria-hidden="true">→</span></a></div>
   </header></div>`;
 }
@@ -221,7 +221,7 @@ function pageView() {
     <header class="rv-ask-hero">
       <p class="rv-ask-eyebrow">${SPARK}Ask AI</p>
       <h1 class="h1">Ask about your money.</h1>
-      <p class="lead">Ask anything about your spending, subscriptions and budget. It only reads your data. It can write a draft email, but it can never send one.</p>
+      <p class="lead">It reads your data and can draft emails, but never sends them.</p>
       <button class="btn btn-ghost btn-sm rv-ask-new" data-new>New question</button>
     </header>
     <div class="rv-ask-thread" data-thread role="log" aria-live="polite" aria-label="Your questions and answers"></div>
@@ -231,8 +231,7 @@ function pageView() {
         <textarea id="rv-ask-box" class="rv-ask-input" rows="1" maxlength="2000" placeholder="Ask anything about your money" autocomplete="off"></textarea>
         <button class="rv-ask-send" type="submit" aria-label="Send your question" disabled>${ic('up')}</button>
       </form>
-      <div class="rv-ask-hint"><span class="rv-ask-keys"><kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line</span>
-        <span class="rv-ask-safe">${ic('lock')}Reads your data. Drafts only, never sends.</span></div>
+      <div class="rv-ask-hint"><span class="rv-ask-keys"><kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line</span></div>
     </div>
     <section class="rv-ask-starters" data-starters aria-label="Questions to start with">
       <h2 class="rv-ask-starters-t">Try one of these</h2>

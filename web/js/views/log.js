@@ -1,6 +1,7 @@
 /* Activity log: everything that happened, in order, in plain English.
    The agent has no tool to edit or delete this log. */
-import { html, raw, mount, api, store, fmt, on, $, $$ } from '../core.js';
+import { html, raw, mount, api, store, fmt, plain, DRAFT_KIND, on, $, $$ } from '../core.js';
+import { fileBrand, periodLabel, fileProblem, rowProblem, monthsFromName } from './start.js';
 
 export const title = 'Activity log';
 
@@ -14,7 +15,7 @@ const ic = (n, cls = '') => raw(`<svg class="rv-ic ${cls}" viewBox="0 0 24 24" f
 const ACTORS = {
   user: { label: 'You', color: 'var(--ink)' },
   agent: { label: 'Agent', color: 'var(--c-blue)' },
-  tool: { label: 'Tools', color: 'var(--ink-4)' },
+  tool: { label: 'The app', color: 'var(--ink-3)' },
   guard: { label: 'Safety guard', color: 'var(--c-red)' },
 };
 const ACTOR_ORDER = ['user', 'agent', 'tool', 'guard'];
@@ -27,30 +28,12 @@ const pretty = (key) => NAMES.get(key) || String(key || '').replace(/_/g, ' ').r
 const clip = (s, n = 140) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + 's'}`;
 
-/* tool name -> what the agent asked for, in plain words */
-const CALL = {
-  update_plan: 'Agent made a plan',
-  list_statement_files: 'Agent looked at your statement files',
-  parse_statement: 'Agent asked to read a statement',
-  remember_cancellation: 'Agent noted a cancellation',
-  categorize_transactions: 'Agent asked to sort the transactions',
-  lookup_merchant: 'Agent looked up a shop on the web',
-  set_merchant_category: 'Agent set a shop’s category',
-  ask_user: 'Agent asked you a question',
-  detect_subscriptions: 'Agent looked for monthly subscriptions',
-  detect_duplicates: 'Agent looked for double charges',
-  detect_price_changes: 'Agent looked for price rises',
-  build_budget: 'Agent built your budget',
-  draft_email: 'Agent asked to write an email draft',
-  finish: 'Agent finished and wrote your summary',
-  upcoming_renewals: 'Agent checked what renews soon',
-  learn_csv_format: 'Agent learned a new bank file layout',
-  compare_with_last_audit: 'Agent compared with your last audit',
-};
+/* The same words as the live run page. */
 const EVENT = {
   goal: 'You set the goal',
   draft_created: 'Agent wrote an email draft',
   ask_user: 'Agent saved a question for you',
+  needs_password: 'Agent asked you for a file password',
   parse_failed: 'A file could not be read',
   category_correction: 'You fixed a category',
   draft_approved: 'You approved an email',
@@ -62,7 +45,7 @@ const EVENT = {
   llm_error: 'The AI service had an error',
   finding_dismissed: 'You marked something as expected',
   subscription_decision: 'You decided about a subscription',
-  memory_forgotten: 'You asked it to forget a fix',
+  memory_forgotten: 'You asked it to forget something',
   csv_format_learned: 'Agent learned a new statement layout',
   chat_question: 'You asked a question',
   chat_refused: 'Safety guard refused a chat request',
@@ -70,28 +53,63 @@ const EVENT = {
   subscription_cancelled: 'You marked a subscription as cancelled',
   pdf_unlocked: 'You unlocked a statement',
   pdf_unlock_failed: 'A statement password did not work',
+  reminder_settings: 'You changed your reminder settings',
+  reminder_call_started: 'A reminder call started',
+  reminder_call_done: 'A reminder call finished',
+  reminder_call_failed: 'A reminder call failed',
+  after_audit_no_call: 'No reminder call was needed',
+  after_audit_call_error: 'A reminder call could not start',
+  scheduled_call_error: 'A reminder call could not start',
+};
+/* Events that only repeat what a tool call already says. */
+const SAME_AS_CALL = { draft_created: 'draft_email', ask_user: 'ask_user', needs_password: 'ask_user', parse_failed: 'parse_statement' };
+const STEP = {
+  categorize_transactions: 'Sorting the transactions',
+  lookup_merchant: 'Looking up a shop',
+  build_budget: 'Building your budget',
+  draft_email: 'Writing an email',
+  remember_cancellation: 'Noting a cancellation',
+  upcoming_renewals: 'Checking what renews soon',
+  learn_csv_format: 'Learning a new file layout',
+  compare_with_last_audit: 'Comparing with your last audit',
 };
 
-/** One short plain sentence about what a tool answered. */
-function resultSummary(tool, o) {
-  if (o == null) return '';
-  if (typeof o !== 'object') return clip(o);
-  if (o.error) return `Could not do it: ${clip(o.error, 110)}`;
+const fileName = (file, months) => {
+  const p = periodLabel(months && months.length ? months : monthsFromName(file));
+  return `${fileBrand(file)}${p ? `, ${p}` : ''}`;
+};
+const emailKind = (k) => String(DRAFT_KIND[k] || 'email').toLowerCase();
+const fixRupee = (s) => String(s ?? '').replace(/\?(?=\d)/g, '₹'); // an old run's goal was saved through a console that could not write ₹
+
+/** One tool call and its answer, as one sentence. */
+function toolSentence(tool, input, output, ctx) {
+  const i = input && typeof input === 'object' ? input : {};
+  const o = output && typeof output === 'object' ? output : {};
+  if (o.error && tool !== 'parse_statement') return { name: `${STEP[tool] || 'A step'} did not work`, summary: clip(plain(o.error), 130), bad: true };
   switch (tool) {
-    case 'parse_statement': {
-      const q = (o.quarantined_rows || []).length;
-      return `Read ${plural(o.transactions ?? 0, 'transaction')} from ${o.file}${q ? `. ${plural(q, 'row')} set aside` : ''}`;
+    case 'update_plan': {
+      const steps = i.steps || [];
+      return { name: ctx.plans++ ? 'Agent changed its plan' : 'Agent made a plan', summary: steps.length ? `${plural(steps.length, 'step')}. First: ${clip(plain(steps[0]), 90)}` : '' };
     }
-    case 'list_statement_files': return `Found ${plural((o.files || []).length, 'file')}`;
+    case 'list_statement_files': return { name: `Agent found ${plural((o.files || []).length, 'statement file')}` };
+    case 'parse_statement': {
+      if (o.error) return { name: `Could not open ${fileName(i.filename)}`, summary: `${fileProblem(o.error, o.error_type)} It was skipped.`, bad: true };
+      const q = o.quarantined_rows || [];
+      return { name: `Agent read ${fileName(o.file || i.filename, o.months)}: ${plural(o.transactions ?? 0, 'transaction')}`, summary: q.length ? `${plural(q.length, 'row')} set aside. ${rowProblem((q[0] || {}).reason)}` : '' };
+    }
+    case 'remember_cancellation': return { name: `Agent noted that ${i.merchant_name || 'a subscription'} was cancelled${i.cancelled_on ? ` on ${fmt.date(i.cancelled_on)}` : ''}` };
     case 'categorize_transactions': {
       const b = o.by_source || {};
       const parts = [b.rules && `${b.rules} known shops`, b.llm && `${b.llm} AI guesses`, b.memory && `${b.memory} from your fixes`, b.safety && `${b.safety} safety check`].filter(Boolean);
-      return `Sorted ${o.total ?? ''} transactions${parts.length ? ': ' + parts.join(', ') : ''}`;
+      return { name: `Agent sorted ${o.total ?? ''} transactions`, summary: parts.join(', ') };
     }
-    case 'detect_subscriptions': return `Found ${plural((o.subscriptions || []).length, 'monthly subscription')}`;
+    case 'lookup_merchant': return { name: `Agent looked up ${i.query || pretty(i.merchant) || 'a shop'} on the web` };
+    case 'set_merchant_category': return { name: `Agent sorted ${pretty(i.merchant)} as ${i.category}` };
+    case 'ask_user': return { name: i.kind === 'password' ? 'Agent asked you for a file password' : 'Agent saved a question for you', summary: clip(plain(i.question), 130) };
+    case 'detect_subscriptions': return { name: `Agent found ${plural((o.subscriptions || []).length, 'monthly subscription')}` };
     case 'detect_duplicates': {
       const c = (o.confirmed_duplicates || []).length, r = (o.rejected_candidates || []).length;
-      return `${plural(c, 'double charge')} confirmed${r ? `, ${r} looked double but were fine` : ''}`;
+      return { name: `Agent found ${plural(c, 'double charge')}`, summary: r ? `${r} more looked double but were fine` : '' };
     }
     case 'detect_price_changes': {
       const parts = [
@@ -99,73 +117,88 @@ function resultSummary(tool, o) {
         (o.trial_conversions || []).length && plural(o.trial_conversions.length, 'trial turned paid', 'trials turned paid'),
         (o.charges_after_cancellation || []).length && plural(o.charges_after_cancellation.length, 'charge after cancelling', 'charges after cancelling'),
       ].filter(Boolean);
-      return parts.length ? `Found ${parts.join(', ')}` : 'No price rises found';
+      return { name: parts.length ? `Agent found ${parts.join(', ')}` : 'Agent found no price rises' };
     }
-    case 'build_budget': return o.current_savings_pct != null ? `You save ${o.current_savings_pct}% now. The plan saves ${o.projected_savings_pct ?? o.savings_target_pct}%` : 'Budget ready';
-    case 'draft_email': return `Draft saved, waiting for you: “${clip(o.subject, 80)}”`;
-    case 'ask_user': return 'Question saved for you';
-    case 'remember_cancellation': return o.saved ? `Saved: cancelled on ${fmt.date(o.cancelled_on)}` : 'Saved';
-    case 'update_plan': return 'Plan saved';
-    case 'finish': return 'Done';
-    default: return clip(Object.entries(o).slice(0, 3).map(([k, v]) => `${pretty(k)}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · '), 120);
+    case 'build_budget': return { name: 'Agent built your budget', summary: o.current_savings_pct != null ? `You save ${o.current_savings_pct}% now. The plan saves ${o.projected_savings_pct ?? o.savings_target_pct}%` : '' };
+    case 'draft_email':
+      if (o.not_drafted) return { name: `Agent did not write the ${emailKind(i.kind)} again`, summary: `It was already sent${o.sent_at ? ` on ${fmt.date(o.sent_at)}` : ''}` };
+      return { name: `Agent wrote a ${emailKind(i.kind)} draft`, summary: o.subject ? `“${clip(o.subject, 110)}”` : '' };
+    case 'finish': return { name: 'Agent finished and wrote your summary' };
+    case 'upcoming_renewals': return { name: 'Agent checked what renews soon' };
+    case 'learn_csv_format': return { name: 'Agent learned a new bank file layout' };
+    case 'compare_with_last_audit': return { name: 'Agent compared with your last audit' };
+    default: return { name: `Agent used ${String(tool).replace(/_/g, ' ')}` };
   }
 }
 
-/** Turn one raw log row into {name, summary, kind}. */
+/** Turn one raw log row (that is not a tool call or answer) into {name, summary}. */
 function describe(ev, ctx) {
   const d = parse(ev.detail);
   const o = d && typeof d === 'object' ? d : {};
   const [type, tool] = ev.event.includes(':') ? ev.event.split(':') : [ev.event, null];
-  if (type === 'tool_call') {
-    let name = CALL[tool] || `Agent used ${pretty(tool)}`;
-    if (tool === 'update_plan') { name = ctx.plans++ ? 'Agent changed its plan' : 'Agent made a plan'; }
-    let sum = '';
-    if (tool === 'parse_statement') sum = o.filename || '';
-    else if (tool === 'update_plan') sum = (o.steps || []).length ? `${plural(o.steps.length, 'step')}: ${clip(o.steps[0], 90)}` : '';
-    else if (tool === 'remember_cancellation') sum = `${o.merchant_name || ''}${o.cancelled_on ? `, cancelled on ${fmt.date(o.cancelled_on)}` : ''}`;
-    else if (tool === 'ask_user') sum = clip(o.question, 120);
-    else if (tool === 'build_budget') sum = o.savings_target_pct ? `Savings target ${o.savings_target_pct}%${(o.cancel_merchants || []).length ? `, stop ${o.cancel_merchants.map(pretty).join(' and ')}` : ''}` : '';
-    else if (tool === 'draft_email') sum = o.kind ? `${pretty(o.kind)} email` : '';
-    else if (tool === 'lookup_merchant') sum = o.query || o.merchant || '';
-    else if (tool === 'set_merchant_category') sum = o.merchant ? `${pretty(o.merchant)} → ${o.category}` : '';
-    else if (tool === 'finish') sum = 'Wrote the summary on your report page';
-    return { name, summary: sum, kind: 'call' };
-  }
   if (type === 'chat_tool') {
     const CHAT = { query_transactions: 'Looked through your transactions', spend_summary: 'Added up your spending', get_findings: 'Checked the problems it found', get_renewals: 'Checked what renews soon', get_budget: 'Read your budget', get_memory: 'Checked what it remembers', compare_with_last_audit: 'Compared with your last audit', request_email_draft: 'Wrote an email draft' };
-    return { name: `Ask AI: ${(CHAT[tool] || `used ${tool}`).replace(/_/g, ' ').replace(/^\w/, (c) => c.toLowerCase())}`, summary: '', kind: 'call' };
+    return { name: `Ask AI: ${(CHAT[tool] || `used ${tool}`).replace(/_/g, ' ').replace(/^\w/, (c) => c.toLowerCase())}`, summary: '' };
   }
-  if (type === 'result') {
-    return { name: 'Tool answered', summary: resultSummary(tool, d), kind: 'result', bad: !!(o && o.error) };
-  }
+  const subject = (id) => { const x = ctx.drafts.get(id); return x ? `“${clip(x.subject, 110)}”` : 'An email draft'; };
   const name = EVENT[type] || pretty(type);
   let sum = '';
   switch (type) {
-    case 'goal': sum = typeof d === 'string' ? `“${clip(d, 140)}”` : ''; break;
-    case 'draft_created': sum = o.subject ? `“${clip(o.subject, 110)}”` : ''; break;
-    case 'ask_user': sum = clip(o.question, 130); break;
-    case 'parse_failed': sum = `${o.file || ''}: ${clip(o.error, 90)}`; break;
+    case 'goal': sum = typeof d === 'string' ? `“${clip(fixRupee(d), 140)}”` : ''; break;
     case 'category_correction': sum = `${pretty(o.merchant)} is now ${o.category}`; break;
-    case 'draft_approved': case 'draft_rejected': sum = o.draft_id ? `Email draft #${o.draft_id}` : ''; break;
-    case 'send_blocked': sum = `Email draft #${o.draft_id ?? '?'}: ${o.reason === 'not approved' ? 'you had not approved it' : o.reason || 'blocked'}`; break;
-    case 'refused_request': sum = clip(o.reason || o.goal, 130); break;
-    case 'email_sent': sum = `Email draft #${o.draft_id ?? '?'}${o.to ? ` to ${o.to}` : ''}`; break;
-    case 'send_failed': sum = clip(o.error, 120); break;
+    case 'draft_approved': case 'draft_rejected': case 'email_sent': sum = subject(o.draft_id); break;
+    case 'draft_requested': sum = o.kind ? `A ${emailKind(o.kind)}` : ''; break;
+    case 'send_blocked': sum = `${subject(o.draft_id)}: ${o.reason === 'not approved' ? 'you had not approved it' : 'it was not going to your demo inbox'}`; break;
+    case 'refused_request': sum = clip(fixRupee(o.goal || o.reason), 130); break;
+    case 'send_failed': sum = `${subject(o.draft_id)}. Nothing was sent`; break;
     case 'chat_question': sum = o.text ? `“${clip(o.text, 130)}”` : ''; break;
     case 'chat_refused': sum = clip(o.reason, 130); break;
-    case 'pdf_unlocked': case 'pdf_unlock_failed': sum = o.file || ''; break;
-    case 'memory_forgotten': sum = pretty(o.key); break;
-    case 'llm_error': sum = clip(typeof d === 'string' ? d : o.error, 120); break;
-    default: sum = typeof d === 'string' ? clip(d) : clip(Object.entries(o).map(([k, v]) => `${pretty(k)}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · '), 120);
+    case 'pdf_unlocked': case 'pdf_unlock_failed': sum = o.file ? fileName(o.file) : ''; break;
+    case 'memory_forgotten': sum = pretty(String(o.key || '').split(':').pop()); break;
+    case 'finding_dismissed': sum = [pretty(String(o.key || '').split(':').pop()), o.reason ? `“${clip(o.reason, 90)}”` : ''].filter(Boolean).join(': '); break;
+    case 'subscription_decision': sum = `${pretty(o.merchant)}: ${o.decision === 'keep' ? 'keep it' : 'stop paying'}`; break;
+    case 'subscription_cancelled': sum = `${pretty(o.merchant)}${o.cancelled_on ? `, on ${fmt.date(o.cancelled_on)}` : ''}`; break;
+    case 'csv_format_learned': sum = o.file ? fileName(o.file) : ''; break;
+    case 'parse_failed': sum = fileName(o.file || ''); break;
+    case 'llm_error': sum = 'It may be busy, or the internet connection dropped'; break;
+    default: sum = '';
   }
-  return { name, summary: sum, kind: 'event' };
+  return { name, summary: sum };
+}
+
+/** Oldest first. A tool call and its answer become one row, and events that only repeat them disappear. */
+function buildRows(rawAsc, ctx) {
+  const rows = [];
+  const waiting = new Map(); // tool -> its rows still waiting for an answer
+  rawAsc.forEach((ev, i) => {
+    const [type, tool] = ev.event.includes(':') ? ev.event.split(':') : [ev.event, null];
+    if (type === 'tool_call') {
+      const row = { ...ev, tool, input: parse(ev.detail), output: undefined, key: `${ev.ts}|${ev.event}|${i}` };
+      rows.push(row);
+      if (!waiting.has(tool)) waiting.set(tool, []);
+      waiting.get(tool).push(row);
+      return;
+    }
+    if (type === 'result') {
+      const list = waiting.get(tool);
+      const row = list && list.shift();
+      if (row) { row.output = parse(ev.detail); return; }
+      rows.push({ ...ev, tool, input: undefined, output: parse(ev.detail), key: `${ev.ts}|${ev.event}|${i}` });
+      return;
+    }
+    if (SAME_AS_CALL[type] && (waiting.get(SAME_AS_CALL[type]) || []).length) return;
+    rows.push({ ...ev, key: `${ev.ts}|${ev.event}|${i}` });
+  });
+  return rows.map((r) => {
+    const s = r.tool && !r.event.startsWith('chat_tool') ? toolSentence(r.tool, r.input, r.output, ctx) : describe(r, ctx);
+    return { ...r, ...s, actor: r.tool && !r.event.startsWith('chat_tool') ? 'agent' : r.actor, hay: `${s.name} ${s.summary || ''} ${r.event} ${r.detail || ''}`.toLowerCase() };
+  });
 }
 
 function detailText(ev) {
-  const d = parse(ev.detail);
-  if (d == null) return 'No details.';
-  if (typeof d === 'string') return d;
-  return JSON.stringify(d, null, 2);
+  const shown = ev.tool && !ev.event.startsWith('chat_tool') ? { asked: ev.input ?? null, answer: ev.output ?? null } : parse(ev.detail);
+  if (shown == null) return 'No details.';
+  return typeof shown === 'string' ? shown : JSON.stringify(shown, null, 2);
 }
 
 /* ---------- templates ---------- */
@@ -181,10 +214,10 @@ function emptyView() {
   return html`<div class="page"><header class="rv-head">
     <p class="rv-crumb"><a href="#/report">Your report</a><span class="sep">/</span><span class="now">Activity log</span></p>
     <h1 class="h1">Nothing has happened yet.</h1>
-    <p class="lead">When you run an audit, every step the agent takes is written here, in order. The agent cannot delete this log. It is how you check what it did.</p>
+    <p class="lead">Every step of your next audit will be written here.</p>
     <div class="rv-empty-actions"><a class="btn btn-primary" href="#/start">Start an audit <span aria-hidden="true">→</span></a><a class="btn btn-secondary" href="#/how">How it works</a></div>
   </header>
-  <div class="rv-ghost" aria-hidden="true"><div class="rv-ghost-note">${ic('lock')} Every step will appear here, and stay here.</div>${[0, 1, 2, 3].map(() => html`<div class="row-g"><i></i><i></i><i></i></div>`)}</div>
+  <div class="rv-ghost" aria-hidden="true">${[0, 1, 2, 3].map(() => html`<div class="row-g"><i></i><i></i><i></i></div>`)}</div>
   </div>`;
 }
 
@@ -223,12 +256,11 @@ function runsCard(runs, shownId) {
   if (!runs || !runs.list.length) return '';
   return html`<section class="card rv-runs" aria-labelledby="rv-runs-t">
     <h2 class="title" id="rv-runs-t">Past audits</h2>
-    <p>Each audit you have run. The one marked “Shown below” is in the timeline.</p>
     <div class="rv-runs-wrap">
       <div class="rv-runs-row is-head" aria-hidden="true"><span>When</span><span>What you asked for</span><span class="n">Transactions</span><span class="n">Problems</span><span class="n">To get back</span><span class="n">Emails</span></div>
       ${runs.list.map((r) => html`<div class="rv-runs-row">
         <span class="rv-runs-when">${fmt.date(r.started_at)}, ${fmt.time(r.started_at)}</span>
-        <span class="rv-runs-goal" title="${r.goal || ''}">${r.id === shownId ? html`<span class="rv-runs-latest">Shown below</span>` : ''}${runState(r) ? html`<span class="rv-runs-state">${runState(r)}</span>` : ''}${r.goal || 'No goal given'}</span>
+        <span class="rv-runs-goal" title="${fixRupee(r.goal)}">${r.id === shownId ? html`<span class="rv-runs-latest">Shown below</span>` : ''}${runState(r) ? html`<span class="rv-runs-state">${runState(r)}</span>` : ''}${fixRupee(r.goal) || 'No goal given'}</span>
         <span class="n">${fmt.n(r.transactions)}<small>transactions</small></span>
         <span class="n">${r.problems == null ? '–' : fmt.n(r.problems)}<small>problems</small></span>
         <span class="n">${fmt.inr(r.recoverable)}<small>to get back</small></span>
@@ -242,14 +274,14 @@ function runsCard(runs, shownId) {
 function eventRow(e) {
   const a = ACTORS[e.actor] || { label: pretty(e.actor), color: 'var(--ink-3)' };
   const open = !!ui.open[e.key];
-  return html`<li class="rv-ev ${e.kind === 'result' ? 'is-result' : ''} ${e.actor === 'guard' ? 'is-guard' : ''} ${open ? 'is-open' : ''}" style="--c:${raw(a.color)}">
+  return html`<li class="rv-ev ${e.actor === 'guard' ? 'is-guard' : ''} ${e.bad ? 'is-bad' : ''} ${open ? 'is-open' : ''}" style="--c:${raw(a.color)}">
     <span class="rv-ev-dot" aria-hidden="true"></span>
     <button class="rv-ev-btn" data-ev="${e.key}" aria-expanded="${open}">
       <span class="rv-ev-name">${e.name}</span>
       <span class="rv-ev-meta"><span class="rv-ev-actor"><i></i>${a.label}</span><span class="rv-ev-time">${fmt.time(e.ts)}${e.ts.length > 16 ? e.ts.slice(16, 19) : ''}</span>${ic('chev', 'rv-ev-chev')}</span>
       ${e.summary ? html`<span class="rv-ev-sum">${e.summary}</span>` : ''}
     </button>
-    ${open ? html`<div class="rv-ev-detail"><pre>${detailText(e)}</pre><div class="rv-ev-raw">${e.actor} · ${e.event} · ${e.ts.replace('T', ' ')}</div></div>` : ''}
+    ${open ? html`<div class="rv-ev-detail"><pre>${detailText(e)}</pre><div class="rv-ev-raw">${e.event} · ${e.ts.replace('T', ' ')}</div></div>` : ''}
   </li>`;
 }
 
@@ -297,11 +329,7 @@ export async function render(root) {
     const raw0 = (s.audit || []).slice().reverse(); // server sends newest first
     if (!s.run && !raw0.length) { mount(wrap, emptyView()); return; }
     NAMES = new Map((s.transactions || []).map((t) => [t.merchant, t.merchant_display]));
-    const ctx = { plans: 0 };
-    ALL = raw0.map((ev, i) => {
-      const d = describe(ev, ctx);
-      return { ...ev, ...d, key: `${ev.ts}|${ev.event}|${i}`, hay: `${d.name} ${d.summary} ${ev.event} ${ev.detail || ''}`.toLowerCase() };
-    });
+    ALL = buildRows(raw0, { plans: 0, drafts: new Map((s.drafts || []).map((x) => [x.id, x])) });
     const counts = Object.fromEntries(ACTOR_ORDER.map((k) => [k, ALL.filter((e) => e.actor === k).length]));
     const blocked = ALL.filter((e) => e.actor === 'guard').length;
     const first = ALL[0], last = ALL[ALL.length - 1];
@@ -309,7 +337,7 @@ export async function render(root) {
       <header class="rv-head">
         <p class="rv-crumb"><a href="#/report">Your report</a><span class="sep">/</span><span class="now">Activity log</span></p>
         <h1 class="h1">Everything that happened, in order.</h1>
-        <p class="lead">Every step the agent took, every answer its tools gave, and every choice you made. <b>This log cannot be deleted by the agent.</b> It is how you check what it did.</p>
+        <p class="lead">Every step the agent took and every choice you made. The agent cannot delete this log.</p>
         <div class="rv-log-sum">
           <span><b>${ALL.length}</b> events</span>
           ${first && last ? html`<span>From <b>${fmt.time(first.ts)}</b> to <b>${fmt.time(last.ts)}</b> on ${fmt.date(last.ts, true)}</span>` : ''}
@@ -319,7 +347,7 @@ export async function render(root) {
       ${runsCard(runs, s.run && s.run.id)}
       <div class="rv-log-ctl">
         <button class="chip ${ui.actor === 'all' ? 'is-active' : ''}" data-actor="all">Everyone <span class="rv-n">${ALL.length}</span></button>
-        ${ACTOR_ORDER.map((k) => html`<button class="chip ${ui.actor === k ? 'is-active' : ''}" data-actor="${k}" style="--c:${raw(ACTORS[k].color)}" ${counts[k] ? '' : 'disabled'}><span class="dot"></span>${ACTORS[k].label} <span class="rv-n">${counts[k]}</span></button>`)}
+        ${ACTOR_ORDER.filter((k) => counts[k]).map((k) => html`<button class="chip ${ui.actor === k ? 'is-active' : ''}" data-actor="${k}" style="--c:${raw(ACTORS[k].color)}"><span class="dot"></span>${ACTORS[k].label} <span class="rv-n">${counts[k]}</span></button>`)}
         <label class="rv-search">${ic('search')}<span class="sr-only">Search the log</span><input type="search" data-q placeholder="Search the log" value="${ui.q}" autocomplete="off" /></label>
         <div class="seg" role="tablist" aria-label="Order">
           <button class="${ui.order === 'old' ? 'is-active' : ''}" data-order="old">Oldest first</button>

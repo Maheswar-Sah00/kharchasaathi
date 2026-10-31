@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/reminders", tags=["reminders"])
 
 class ScriptReq(BaseModel):
     mode: str = "renewal"  # renewal | monthly
-    days_ahead: int = 7
+    days_ahead: int | None = None  # default: the saved "within N days" setting
 
 
 class CallReq(BaseModel):
@@ -24,8 +24,9 @@ class CallReq(BaseModel):
 
 class SettingsReq(BaseModel):
     enabled: bool
-    days_before: int = 2
+    days_before: int = 7
     monthly: bool = True
+    after_audit: bool | None = None
 
 
 @router.get("")
@@ -40,7 +41,7 @@ def overview():
 def script(req: ScriptReq):
     if req.mode not in ("renewal", "monthly"):
         raise HTTPException(400, "mode must be renewal or monthly")
-    return reminders.make_script(req.mode, name=NAME, days_ahead=req.days_ahead)
+    return reminders.make_script(req.mode, name=NAME, days_ahead=req.days_ahead or reminders.settings()["days_before"])
 
 
 @router.post("/call")
@@ -54,7 +55,7 @@ def call(req: CallReq):
 
 @router.post("/settings")
 def save(req: SettingsReq):
-    return reminders.save_settings(req.enabled, req.days_before, req.monthly)
+    return reminders.save_settings(req.enabled, req.days_before, req.monthly, req.after_audit)
 
 
 @router.post("/check-now")

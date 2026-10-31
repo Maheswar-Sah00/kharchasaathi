@@ -159,60 +159,7 @@ export function hbars(el, rows, opts = {}) {
 }
 
 /* =====================================================================
-   2. Slope chart: "now" on the left, "new" on the right, one line per row.
-      Labels that would collide are spread apart with a short leader line.
-   ===================================================================== */
-function spread(points, gap, lo, hi) {
-  const ps = points.map((p, i) => ({ ...p, i, ly: p.y })).sort((a, b) => a.y - b.y);
-  for (let k = 1; k < ps.length; k++) if (ps[k].ly < ps[k - 1].ly + gap) ps[k].ly = ps[k - 1].ly + gap;
-  const over = ps.length ? ps[ps.length - 1].ly - hi : 0;
-  if (over > 0) { ps[ps.length - 1].ly -= over; for (let k = ps.length - 2; k >= 0; k--) if (ps[k].ly > ps[k + 1].ly - gap) ps[k].ly = ps[k + 1].ly - gap; }
-  if (ps.length && ps[0].ly < lo) { const d = lo - ps[0].ly; ps.forEach((p) => (p.ly += d)); }
-  return ps.sort((a, b) => a.i - b.i);
-}
-
-export function slope(el, rows, opts = {}) {
-  const { left = 'Now', right = 'New', height: tall = 300, narrowHeight, format = fmt.inr } = opts;
-  el.classList.add('rp-ch', 'rp-ch-slope');
-  const draw = (W) => {
-    const narrow = W < 440;
-    const height = narrow && narrowHeight ? narrowHeight : tall;
-    const lw = narrow ? 70 : Math.min(210, Math.round(W * 0.36));
-    const rw = narrow ? Math.min(170, Math.round(W * 0.46)) : 90;
-    const top = 44, bottom = height - 16;
-    const x0 = lw, x1 = W - rw;
-    const vmax = Math.max(1, ...rows.flatMap((r) => [r.from, r.to]));
-    const y = (v) => bottom - (v / vmax) * (bottom - top);
-    const L = spread(rows.map((r) => ({ y: y(r.from) })), 17, top, bottom);
-    const R = spread(rows.map((r) => ({ y: y(r.to) })), 17, top, bottom);
-    const lead = (xa, ya, xb, yb) => (Math.abs(ya - yb) > 2.5 ? html`<path class="rp-ch-slope-lead" d="M${xa} ${r2(ya)}L${xb} ${r2(yb)}"/>` : '');
-    mount(el, html`<svg width="${W}" height="${height}" viewBox="0 0 ${W} ${height}" role="img" aria-label="${opts.aria || 'Slope chart'}">
-      <text class="rp-ch-slope-head" x="${x0}" y="16" text-anchor="middle">${left}</text>
-      <text class="rp-ch-slope-head" x="${x1}" y="16" text-anchor="middle">${right}</text>
-      <line class="rp-ch-slope-axis" x1="${x0}" x2="${x0}" y1="28" y2="${bottom + 6}"/>
-      <line class="rp-ch-slope-axis" x1="${x1}" x2="${x1}" y1="28" y2="${bottom + 6}"/>
-      ${rows.map((r, i) => {
-        const ya = y(r.from), yb = y(r.to), la = L[i].ly, lb = R[i].ly;
-        const c = color(r.color);
-        return html`<g class="rp-ch-slope-row" tabindex="0" data-key="${r.key || ''}"${r.tip ? html` data-tip="${r.tip}"` : ''} aria-label="${`${r.label}: ${format(r.from)} now, ${format(r.to)} new`}" style="--i:${i}">
-          <path class="rp-ch-slope-hit" d="M${x0} ${r2(ya)}L${x1} ${r2(yb)}"/>
-          <path class="rp-ch-slope-line" d="M${x0} ${r2(ya)}L${x1} ${r2(yb)}" stroke="${c}" pathLength="1"/>
-          <circle class="rp-ch-slope-dot" cx="${x0}" cy="${r2(ya)}" r="4.5" fill="${c}"/>
-          <circle class="rp-ch-slope-dot is-r" cx="${x1}" cy="${r2(yb)}" r="4.5" fill="${c}"/>
-          ${lead(x0 - 9, la, x0 - 5, ya)}${lead(x1 + 9, lb, x1 + 5, yb)}
-          <text class="rp-ch-slope-lab" x="${x0 - 12}" y="${r2(la + 4.5)}" text-anchor="end">${narrow ? '' : html`<tspan class="n">${r.label}</tspan>`}<tspan class="v" dx="${narrow ? 0 : 8}">${format(r.from)}</tspan></text>
-          <text class="rp-ch-slope-lab is-r" x="${x1 + 12}" y="${r2(lb + 4.5)}"><tspan class="v">${format(r.to)}</tspan>${narrow ? html`<tspan class="n" dx="7">${r.short || r.label}</tspan>` : ''}</text>
-        </g>`;
-      })}
-    </svg>`);
-  };
-  const stopR = responsive(el, draw);
-  const stopV = whenVisible(el, () => el.classList.add('is-in'));
-  return { el, destroy: () => { stopR(); stopV(); } };
-}
-
-/* =====================================================================
-   3. Segmented bar: one whole split into parts. thin = 8px, rounded ends,
+   2. Segmented bar: one whole split into parts. thin = 8px, rounded ends,
       no text. tall = 28px blocks with the value inside when it fits.
    ===================================================================== */
 export function segbar(el, parts, opts = {}) {
@@ -233,7 +180,7 @@ export function segbar(el, parts, opts = {}) {
 }
 
 /* =====================================================================
-   4. Money calendar: months side by side (Mon-Sun), every payment a dot
+   3. Money calendar: months side by side (Mon-Sun), every payment a dot
       in its day, area ~ amount (sqrt scale). Amounts >= cap are drawn as
       a ring at the largest size. Pointing anywhere in a day picks the
       nearest dot and lights up every payment to the same shop.

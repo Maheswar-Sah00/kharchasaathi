@@ -6,19 +6,18 @@
 
 /* ---------- local tokens (derived from base tokens only) ---------- */
 .rp, .rp-ch, .ks-tip {
-  --rp-keep: color-mix(in oklab, var(--ink-4) 52%, var(--bg-elev));
+  --rp-keep: var(--c-blue-2);
   --rp-on-soft: #0B0B0C;
+  --rp-on-save: #0B0B0C;
   --rp-cell: var(--bg-sunk);
 }
 :root[data-theme="dark"] .rp, :root[data-theme="dark"] .rp-ch, :root[data-theme="dark"] .ks-tip {
-  --rp-keep: color-mix(in oklab, var(--ink-4) 62%, var(--bg-elev));
-  --rp-on-soft: #FAFAF8;
+  --rp-keep: var(--c-blue-2);
+  --rp-on-soft: #0B0B0C;
+  --rp-on-save: #0B0B0C;
   --rp-cell: var(--bg-hover);
 }
 
-/* Workaround for a foundation bug: .nav-pills .count sets display, which beats [hidden]
-   (an empty black circle shows in the nav). Requested in base.css; safe to delete then. */
-.nav-pills .count[hidden] { display: none; }
 
 /* =====================================================================
    1. Hero
@@ -135,7 +134,7 @@
 .rp-form-fields { display: grid; gap: 10px; align-content: start; }
 .rp-field { display: grid; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
 .rp-input { width: 100%; height: 40px; padding: 0 12px; border-radius: var(--r-sm); background: var(--bg-elev); border: 1px solid var(--line-strong); color: var(--ink); font-size: 14.5px; font-weight: 400; transition: border-color var(--dur-2), box-shadow var(--dur-2); }
-.rp-input::placeholder { color: var(--ink-4); }
+.rp-input::placeholder { color: var(--ink-3); }
 .rp-input:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 4px var(--focus); }
 .rp-form-btns { display: flex; justify-content: flex-end; gap: 8px; }
 @keyframes rp-fade-up { from { opacity: 0; transform: translateY(6px); } }
@@ -246,6 +245,22 @@ button.rp-next-row:hover { background: var(--bg-hover); }
 .rp-cc-foot { margin: 14px 0 0; }
 .rp-key-two { width: 18px !important; background: linear-gradient(90deg, var(--a) 0 55%, transparent 55% calc(55% + 2px), var(--b) calc(55% + 2px)) !important; border-radius: 2px 3px 3px 2px !important; }
 
+/* month by month */
+.rp-mm { display: grid; gap: 12px; }
+.rp-mm-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 54px; gap: 12px; align-items: center; }
+.rp-mm-l { font-size: 14px; color: var(--ink-2); }
+.rp-mm-row.is-plan { margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--line); }
+.rp-mm-row.is-plan .rp-mm-l { font-weight: 600; color: var(--ink); line-height: 1.25; }
+.rp-mm-v { display: grid; text-align: right; line-height: 1.2; }
+.rp-mm-v b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.rp-mm-v small { font-size: 12px; color: var(--ink-3); }
+.rp-mm .rp-ch-seg-tall { height: 40px; }
+@media (max-width: 560px) {
+  .rp-mm-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .rp-mm-bar { grid-column: 1 / -1; grid-row: 2; }
+  .rp-mm-v { display: flex; gap: 5px; align-items: baseline; }
+}
+
 /* savings card */
 .rp-save { display: flex; flex-direction: column; gap: 22px; padding-top: 10px; }
 .rp-big { display: flex; align-items: flex-end; gap: 18px; }
@@ -264,7 +279,6 @@ button.rp-next-row:hover { background: var(--bg-hover); }
 .rp-save-list li b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
 .rp-save-list li.is-total { border-bottom: 0; color: var(--ink); font-weight: 600; }
 .rp-save-list li.is-total b { font-weight: 600; }
-.rp-save-foot { margin: -12px 0 0; }
 
 /* =====================================================================
    6. Needs your eyes
@@ -292,19 +306,6 @@ button.rp-next-row:hover { background: var(--bg-hover); }
 /* =====================================================================
    7. In the agent's own words + links
    ===================================================================== */
-.rp-words { padding: 0; overflow: hidden; }
-.rp-words summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 24px 28px; transition: background var(--dur-2); }
-.rp-words summary::-webkit-details-marker { display: none; }
-.rp-words summary:hover { background: var(--bg-hover); }
-.rp-words-label { display: grid; gap: 4px; }
-.rp-words-label .eyebrow { margin: 0; }
-.rp-words-chev { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-2); flex: none; transition: transform var(--dur-3) var(--ease-out), background var(--dur-2); }
-.rp-words-chev svg { width: 18px; height: 18px; }
-.rp-words[open] .rp-words-chev { transform: rotate(180deg); }
-.rp-words-md { padding: 20px 28px 32px; border-top: 1px solid var(--line); }
-.rp-words-md .md { max-width: 72ch; }
-.rp-words-note { margin: 0 0 18px; max-width: 72ch; }
-.rp-words[open] .rp-words-md { animation: rp-fade-up 360ms var(--ease-out) both; }
 .rp-links { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-top: 28px; font-size: 14.5px; }
 
 .rp-still, .rp-still *, .rp-still *::before, .rp-still *::after { transition: none !important; animation: none !important; }
@@ -364,24 +365,6 @@ button.rp-next-row:hover { background: var(--bg-hover); }
 .rp-ch-bars.is-stacked .rp-ch-bar-val { display: none; }
 
 /* slope */
-.rp-ch-slope svg { display: block; overflow: visible; width: 100%; height: auto; }
-.rp-ch-slope-head { font-size: 12px; font-weight: 500; fill: var(--ink-3); }
-.rp-ch-slope-axis { stroke: var(--grid); stroke-width: 1; }
-.rp-ch-slope-hit { stroke: transparent; stroke-width: 20; fill: none; stroke-linecap: round; }
-.rp-ch-slope-line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1100ms var(--ease-out) calc(var(--i) * 90ms + 200ms); }
-.rp-ch.is-in .rp-ch-slope-line { stroke-dashoffset: 0; }
-.rp-ch-slope-dot { stroke: var(--bg-elev); stroke-width: 2; opacity: 0; transition: opacity 300ms ease calc(var(--i) * 90ms + 100ms); }
-.rp-ch-slope-dot.is-r { transition-delay: calc(var(--i) * 90ms + 1050ms); }
-.rp-ch.is-in .rp-ch-slope-dot { opacity: 1; }
-.rp-ch-slope-lead { stroke: var(--ink-4); stroke-width: 1; fill: none; }
-.rp-ch-slope-lab { font-size: 13px; fill: var(--ink-3); opacity: 0; transition: opacity 400ms ease calc(var(--i) * 90ms + 300ms); font-variant-numeric: tabular-nums; }
-.rp-ch-slope-lab.is-r { transition-delay: calc(var(--i) * 90ms + 1100ms); }
-.rp-ch.is-in .rp-ch-slope-lab { opacity: 1; }
-.rp-ch-slope-lab .v { fill: var(--ink); font-weight: 600; }
-.rp-ch-slope-lab .n { fill: var(--ink-2); }
-.rp-ch-slope-row { transition: opacity var(--dur-2); outline: none; }
-.rp-ch-slope svg:hover .rp-ch-slope-row:not(:hover) { opacity: .22; }
-.rp-ch-slope-row:focus-visible .rp-ch-slope-line { stroke-width: 3.5; }
 
 /* segmented bar */
 .rp-ch-segwrap { width: 100%; }
@@ -484,8 +467,6 @@ button.rp-next-row:hover { background: var(--bg-hover); }
   .rp-cc-head { flex-direction: column; gap: 10px; }
   .rp-cc-fig { text-align: left; }
   .rp-eye { padding: 22px 20px; }
-  .rp-words summary { padding: 20px; }
-  .rp-words-md { padding: 20px 20px 24px; }
   .rp-actions .btn { flex: 1 1 auto; }
   .rp-big { flex-direction: column; align-items: flex-start; gap: 10px; }
   .rp-big p { max-width: none; }
@@ -549,8 +530,6 @@ button.rp-next-row:hover { background: var(--bg-hover); }
   .rp-eyes[data-n="3"] { grid-template-columns: 1fr 1fr; }
   .rp-eyes[data-n="3"] > :last-child { grid-column: 1 / -1; }
   .rp-ch-bar-stack, .rp-ch-seg { clip-path: none !important; }
-  .rp-ch-bar-val, .rp-ch-slope-lab, .rp-ch-slope-dot, .rp-cal-dot { opacity: 1 !important; animation: none !important; }
-  .rp-ch-slope-line { stroke-dashoffset: 0 !important; }
+  .rp-ch-bar-val, .rp-cal-dot { opacity: 1 !important; animation: none !important; }
   .rp-ch-bar-tick { transform: none !important; }
-  .rp-words-md { max-width: none; }
 }

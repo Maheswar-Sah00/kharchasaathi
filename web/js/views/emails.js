@@ -13,7 +13,6 @@ const P = {
   x: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
   inbox: '<path d="M3.5 13.5h4.6l1.6 2.6h4.6l1.6-2.6h4.6"/><path d="M6 5h12l2.5 8.5v5A1.5 1.5 0 0 1 19 20H5a1.5 1.5 0 0 1-1.5-1.5v-5L6 5z"/>',
   pencil: '<path d="M4.5 19.5h4l10-10a2.1 2.1 0 0 0-4-4l-10 10v4z"/><path d="m13.5 6.5 4 4"/>',
-  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
   alert: '<circle cx="12" cy="12" r="8.5"/><path d="M12 8v4.6M12 15.8v.2"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   retry: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/>',
@@ -64,9 +63,9 @@ function skeleton() {
 /* why = 'none' (no audit yet) | 'unfinished' (the last audit did not finish) | 'clean' (finished, nothing to send) */
 function emptyView(why) {
   const COPY = {
-    none: ['No emails yet.', 'Run an audit first. When KharchaSaathi finds money to get back or something to cancel, it writes the email for you. Each one waits here. Nothing is sent until you press Approve.'],
-    unfinished: ['No emails yet.', 'Your last audit did not finish, so no emails were written. Run it again. Each email will wait here, and nothing is sent until you press Approve.'],
-    clean: ['No emails were needed.', 'This audit found nothing to dispute or cancel, so the agent did not write any emails. When it does, each one waits here until you approve it.'],
+    none: ['No emails yet.', 'Run an audit. Any emails it writes will wait here for your approval.'],
+    unfinished: ['No emails yet.', 'Your last audit did not finish. Run it again.'],
+    clean: ['No emails were needed.', 'This audit found nothing to dispute or cancel.'],
   };
   const [head, lead] = COPY[why];
   return html`<div class="page">
@@ -80,7 +79,6 @@ function emptyView(why) {
       </div>
     </header>
     <div class="rv-ghost" aria-hidden="true">
-      <div class="rv-ghost-note">${ic('lock')} Drafts will appear here, locked until you approve them.</div>
       ${[0, 1, 2].map(() => html`<div class="row-g"><i></i><i></i><i></i></div>`)}
     </div></div>`;
 }
@@ -110,11 +108,9 @@ function listItem(d, f) {
 function banner(d, s) {
   const r = ui.result[d.id];
   if (d.status === 'SENT') {
-    const pid = d.provider_id || (r && r.pid);
     return html`<div class="rv-banner is-good"><span class="rv-banner-ic">${ic('check')}</span><div class="rv-banner-text">
       <b>Sent to your demo inbox.</b>
-      <p>You approved it${d.decided_at ? ` on ${when(d.decided_at)}` : ''}. It went to ${s.demo_inbox || d.to_addr || 'your demo inbox'}, with the real recipient written on top.</p>
-      ${pid ? html`<code>Email service id: ${pid}</code>` : ''}</div></div>`;
+      <p>Approved${d.decided_at ? ` on ${when(d.decided_at)}` : ''}. Delivered to ${s.demo_inbox || d.to_addr || 'your demo inbox'}.</p></div></div>`;
   }
   if (d.status === 'APPROVED') {
     let head = 'Approved, but not sent yet.';
@@ -132,7 +128,7 @@ function banner(d, s) {
   }
   if (d.status === 'REJECTED') {
     return html`<div class="rv-banner"><span class="rv-banner-ic">${ic('x')}</span><div class="rv-banner-text">
-      <b>You chose not to send this email.</b><p>It stays here as a record${d.decided_at ? ` (decided ${when(d.decided_at)})` : ''}. Nothing was sent.</p></div></div>`;
+      <b>Not sent.</b><p>You chose not to send this email${d.decided_at ? ` on ${when(d.decided_at)}` : ''}.</p></div></div>`;
   }
   return '';
 }
@@ -147,7 +143,7 @@ function blockedOverlay(d) {
       <div class="rv-block-eyebrow">Safety test passed</div>
       <h3 id="rv-block-t">Blocked. Nothing was sent.</h3>
       <div class="rv-block-msg">${r.msg || 'Blocked: this email has not been approved by the user.'}</div>
-      <p id="rv-block-d">This is the lock working. The server refuses to send any email you have not approved, even if the app or the agent asks it to. The attempt was written to the activity log.</p>
+      <p id="rv-block-d">The server refuses any email you have not approved. This attempt is in the activity log.</p>
       <div class="rv-block-actions">
         <button class="btn btn-primary" data-act="dismiss">Back to the draft</button>
         <a class="btn btn-ghost" href="#/log">See it in the log <span aria-hidden="true">→</span></a>
@@ -176,18 +172,17 @@ function editor(d, f, s) {
     ${banner(d, s)}
     <div class="rv-mhead">
       <div class="rv-mrow"><span class="k">To</span><span class="v"><span class="rv-to">${d.intended_recipient}</span>
-        <span class="rv-deliver" title="In this demo, emails never reach the real company. They go to your own inbox, with the real recipient written on top.">${ic('inbox')}<span>Delivered to: <b>your demo inbox</b>${deliver ? ` · ${deliver}` : ''}</span></span></span></div>
+        ${d.status === 'REJECTED' ? '' : html`<span class="rv-deliver ${d.status === 'SENT' ? 'is-sent' : ''}" title="In this demo, emails never reach the real company. They go to your own inbox, with the real recipient written on top.">${ic('inbox')}<span>${d.status === 'SENT' ? 'Delivered to' : 'Will go to'}: <b>your demo inbox</b>${deliver ? ` · ${deliver}` : ''}</span></span>`}</span></div>
       <div class="rv-mrow"><span class="k">From</span><span class="v">${(s.profile && s.profile.name) || 'You'}, sent by KharchaSaathi</span></div>
       <div class="rv-mrow is-subject"><label class="k" for="rv-subj">Subject</label>
         <textarea id="rv-subj" class="rv-subject" data-field="subject" rows="1" ${editable ? '' : 'readonly'} spellcheck="true">${subject}</textarea></div>
     </div>
     <div class="rv-mbody">
-      <div class="rv-stamp"><code>[Demo send - intended recipient: ${d.intended_recipient}]</code><small>Added on top when it is sent</small></div>
       <label class="sr-only" for="rv-body">Email text</label>
       <textarea id="rv-body" class="textarea rv-body" data-field="body" rows="8" ${editable ? '' : 'readonly'} spellcheck="true">${body}</textarea>
       ${editable ? html`<div class="rv-edit-hint">${edited
         ? html`<span class="rv-edited"><i></i>You edited this draft.</span><button data-act="undo">Undo my changes</button>`
-        : html`${ic('pencil')}<span>Click the subject or the text to change anything before you approve.</span>`}</div>` : ''}
+        : html`${ic('pencil')}<span>Click any text to edit it.</span>`}</div>` : ''}
     </div>
     ${editable ? html`<div class="rv-mfoot">
       <button class="rv-test" data-act="test" ${busy ? 'disabled' : ''} title="Asks the server to send this email without your approval. It should refuse.">
@@ -218,12 +213,7 @@ function pageView(s) {
     <header class="rv-head">
       <p class="rv-crumb"><a href="#/report">Your report</a><span class="sep">/</span><span class="now">Emails</span></p>
       <h1 class="h1">${headline(drafts)}</h1>
-      <p class="lead">The agent can only write drafts. <b>Nothing leaves until you press Approve.</b> In this demo, every email goes only to your own demo inbox${s.demo_inbox ? ` (${s.demo_inbox})` : ''}, with the real recipient written on top.</p>
-      <div class="rv-steps" aria-label="How sending works">
-        <span class="rv-step"><b>${ic('pencil')}</b>The agent writes a draft</span><span class="rv-step-sep"></span>
-        <span class="rv-step"><b>${ic('eye')}</b>You read it and edit it</span><span class="rv-step-sep"></span>
-        <span class="rv-step is-you"><b>${ic('send')}</b>Only your click sends it</span>
-      </div>
+      <p class="lead">Nothing is sent until you approve it.</p>
     </header>
     <div class="rv-mail-layout">
       <nav class="rv-dlist" aria-label="Email drafts">
@@ -301,7 +291,7 @@ export async function render(root, ctx) {
         const changed = (e2.subject ?? d.subject) !== d.subject || (e2.body ?? d.body) !== d.body;
         hint.innerHTML = changed
           ? '<span class="rv-edited"><i></i>You edited this draft.</span><button data-act="undo">Undo my changes</button>'
-          : `${ic('pencil')}<span>Click the subject or the text to change anything before you approve.</span>`;
+          : `${ic('pencil')}<span>Click any text to edit it.</span>`;
       }
     }),
     on(wrap, 'click', '[data-act]', async (e, t) => {

@@ -19,9 +19,9 @@ const pc = (x) => { const v = Math.round(x * 1000) / 10; return (v % 1 ? v.toFix
 const pretty = (key) => String(key || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 const SYSTEMS = [
-  { key: 'ai', label: 'AI alone', color: 'var(--ink-4)' },
-  { key: 'cold', label: 'KharchaSaathi, first try', color: 'var(--c-blue)' },
-  { key: 'mem', label: 'With your fixes remembered', color: 'var(--c-aqua)' },
+  { key: 'ai', label: 'AI alone', short: 'AI alone', cls: 'is-ai' },
+  { key: 'cold', label: 'KharchaSaathi, first try', short: 'First try', cls: 'is-cold' },
+  { key: 'mem', label: 'With your fixes remembered', short: 'With your fixes', cls: 'is-mem' },
 ];
 
 const DETECTORS = [
@@ -69,7 +69,7 @@ function emptyView(err) {
     <h1 class="h1">${err ? 'We could not load the test results.' : 'No test results yet.'}</h1>
     <p class="lead">${err
       ? 'The KharchaSaathi server did not answer. Check that it is running, then try again.'
-      : 'The tests have not been run on this computer. Run them once and the results appear here, in plain English.'}</p>
+      : 'The tests have not been run on this computer.'}</p>
     ${err ? html`<p class="small mono" style="margin-top:14px">${err.message}</p>` : html`<p class="rv-proof-meta" style="margin-top:20px">Run: <code>python eval/run_eval.py</code></p>`}
     <div class="rv-empty-actions"><button class="btn btn-primary" data-act="reload">Try again</button><a class="btn btn-secondary" href="#/how">How it works</a></div>
   </header></div>`;
@@ -85,10 +85,10 @@ function shape(e) {
   const heldAiErr = (ai.errors || []).filter((x) => (x.date || '') >= '2026-09-01').length;
   const heldAi = heldN ? (heldN - heldAiErr) / heldN : null;
   const sets = [
-    { name: 'Main set', sub: `${ai.n || 0} transactions, Aug to Oct`, n: ai.n, vals: [ai.accuracy, (C.hybrid_cold || {}).accuracy, (C.hybrid_with_memory || {}).accuracy] },
-    held.n ? { name: 'Held-out months', sub: `${held.n} Sep and Oct rows. Fixes learned from August only`, n: held.n, vals: [heldAi, held.cold, held.with_memory] } : null,
-    C.hard_india ? { name: 'Hard Indian set', sub: `${C.hard_india.hybrid.n} messy descriptions`, n: C.hard_india.hybrid.n, vals: [C.hard_india.llm_only.accuracy, C.hard_india.hybrid.accuracy, null] } : null,
-    C.public_hf_sample ? { name: 'Public US set', sub: `${C.public_hf_sample.hybrid.n} rows from a public benchmark`, n: C.public_hf_sample.hybrid.n, vals: [C.public_hf_sample.llm_only.accuracy, C.public_hf_sample.hybrid.accuracy, null] } : null,
+    { name: `Arjun’s ${ai.n || 0} transactions`, sub: 'August to October', n: ai.n, vals: [ai.accuracy, (C.hybrid_cold || {}).accuracy, (C.hybrid_with_memory || {}).accuracy] },
+    held.n ? { name: 'September and October only', sub: `${held.n} rows. It learned from August, then was tested on these`, n: held.n, vals: [heldAi, held.cold, held.with_memory] } : null,
+    C.hard_india ? { name: `${C.hard_india.hybrid.n} messy Indian descriptions`, sub: 'A harder test', n: C.hard_india.hybrid.n, vals: [C.hard_india.llm_only.accuracy, C.hard_india.hybrid.accuracy, null] } : null,
+    C.public_hf_sample ? { name: `${C.public_hf_sample.hybrid.n} US transactions`, sub: 'A harder test, from a public set', n: C.public_hf_sample.hybrid.n, vals: [C.public_hf_sample.llm_only.accuracy, C.public_hf_sample.hybrid.accuracy, null] } : null,
   ].filter(Boolean);
   const det = (e.detection || []);
   const real = det.filter((d) => !/decoy/i.test(d.detector));
@@ -97,9 +97,9 @@ function shape(e) {
   const found = real.reduce((a, d) => a + d.true_positives, 0);
   const falseAlarms = real.reduce((a, d) => a + Math.max(0, d.predicted - d.true_positives), 0) + (decoy ? decoy.predicted : 0);
   const misses = [
-    ...((C.hybrid_cold || {}).errors || []).map((x) => ({ set: 'Main set, first try', text: pretty(x.merchant), mono: false, pred: x.predicted, truth: x.truth, when: x.date })),
-    ...(((C.hard_india || {}).hybrid || {}).errors || []).map((x) => ({ set: 'Hard Indian set', text: x.description, mono: true, pred: x.predicted, truth: x.truth })),
-    ...(((C.public_hf_sample || {}).hybrid || {}).errors || []).map((x) => ({ set: 'Public US set', text: x.description, mono: true, pred: x.predicted, truth: x.truth })),
+    ...((C.hybrid_cold || {}).errors || []).map((x) => ({ set: 'Arjun’s transactions, first try', text: pretty(x.merchant), mono: false, pred: x.predicted, truth: x.truth, when: x.date })),
+    ...(((C.hard_india || {}).hybrid || {}).errors || []).map((x) => ({ set: 'Messy Indian descriptions', text: x.description, mono: true, pred: x.predicted, truth: x.truth })),
+    ...(((C.public_hf_sample || {}).hybrid || {}).errors || []).map((x) => ({ set: 'US transactions', text: x.description, mono: true, pred: x.predicted, truth: x.truth })),
   ];
   return { C, sets, real, decoy, planted, found, falseAlarms, misses, safety: e.safety || { cases: [] } };
 }
@@ -109,51 +109,48 @@ function stats(d) {
   const cold = (d.C.hybrid_cold || {}).accuracy, mem = (d.C.hybrid_with_memory || {}).accuracy;
   return html`<div class="rv-stats">
     <div class="rv-stat"><div class="rv-stat-v"><span class="from">${pc(cold)}</span><span class="arrow">→</span><span data-count="${mem * 100}" data-from="${cold * 100}" data-pct="1">${pc(mem)}</span></div>
-      <div class="rv-stat-l"><b>Sorted correctly.</b> ${pc(cold)} on the first try, ${pc(mem)} after learning your fixes.</div>
-      <div class="rv-stat-sub">${d.C.llm_only ? `${d.C.llm_only.n} labelled transactions` : ''}</div></div>
+      <div class="rv-stat-l"><b>Sorted correctly.</b> ${pc(cold)} on the first try, ${pc(mem)} after learning your fixes.</div></div>
     <div class="rv-stat"><div class="rv-stat-v"><span data-count="${d.found}">${d.found}</span><span class="of"> of ${d.planted}</span></div>
-      <div class="rv-stat-l"><b>Planted problems found.</b> ${d.falseAlarms ? `${fmt.plural(d.falseAlarms, 'false alarm')}.` : 'No false alarms.'}</div>
-      <div class="rv-stat-sub">Subscriptions, double charges, price rises and more</div></div>
+      <div class="rv-stat-l"><b>Planted problems found.</b> ${d.falseAlarms ? `${fmt.plural(d.falseAlarms, 'false alarm')}.` : 'No false alarms.'}</div></div>
     <div class="rv-stat"><div class="rv-stat-v"><span data-count="${d.safety.passed}">${d.safety.passed}</span><span class="of"> of ${d.safety.total}</span></div>
-      <div class="rv-stat-l"><b>Safety tests passed.</b> It refuses unsafe requests and cannot send on its own.</div>
-      <div class="rv-stat-sub">Tricks, bad files and blocked sends</div></div>
+      <div class="rv-stat-l"><b>Safety tests passed.</b> It refuses unsafe requests and cannot send on its own.</div></div>
   </div>`;
 }
 
 function chart(d) {
-  const ticks = [0, 25, 50, 75, 100];
-  const allSame = d.sets.every((s) => s.vals[0] == null || s.vals[1] == null || Math.abs(s.vals[0] - s.vals[1]) < 0.0006);
+  const seen = d.sets.flatMap((s) => s.vals).filter((v) => v != null).map((v) => v * 100);
+  const lo = Math.min(80, Math.floor(Math.min(...seen) / 5) * 5);
+  const ticks = [];
+  for (let t = lo; t <= 100; t += 5) ticks.push(t);
+  const x = (v) => `${(((v * 100 - lo) / (100 - lo)) * 100).toFixed(2)}%`;
   const behind = d.sets.find((s) => s.vals[0] != null && s.vals[1] != null && s.vals[0] - s.vals[1] > 0.0006);
   const pub = (d.C.public_hf_sample || {}).hybrid || {};
-  const ex = (pub.errors || []).find((x) => /walmart/i.test(x.description)) || (pub.errors || [])[0];
-  const exText = ex ? html`, like <b>${ex.description.replace(/\s*#\d+$/, '')}</b> sorted as ${ex.predicted} when the answer key says ${ex.truth}` : '';
-  let delay = 0;
+  const ex = (pub.errors || []).find((e) => /walmart/i.test(e.description)) || (pub.errors || [])[0];
+  const exText = ex ? html`, like <b>${ex.description.replace(/\s*#\d+$/, '')}</b>: it said ${ex.predicted}, the answer key says ${ex.truth}` : '';
   return html`<section class="card rv-chart reveal" aria-labelledby="rv-acc-t">
     <h2 class="title" id="rv-acc-t">How often it sorts a transaction correctly</h2>
-    <p class="small" style="margin:6px 0 0;max-width:70ch">Each bar is the share of transactions put in the right category, on four different test sets. Point at a bar for its numbers.</p>
-    <div class="rv-chart-legend">${SYSTEMS.map((s) => html`<span class="key" style="--c:${raw(s.color)}"><i></i>${s.label}</span>`)}</div>
-    <div class="rv-gb" role="table" aria-label="Accuracy by test set">
-      <div class="rv-gb-grid" aria-hidden="true">${ticks.map((t) => html`<span class="${t === 0 ? 'is-zero' : ''}" style="left:${t}%"></span>`)}</div>
-      ${d.sets.map((s) => html`<div class="rv-gb-group" role="row">
-        <div class="rv-gb-label" role="rowheader"><b>${s.name}</b><small>${s.sub}</small></div>
-        <div class="rv-gb-bars">
-          ${SYSTEMS.map((sys, i) => {
-            const v = s.vals[i];
-            if (v == null) {
-              return html`<div class="rv-gb-row is-na" role="cell" data-tip="${`<div class="tip-title">${esc(s.name)} · ${esc(sys.label)}</div>Not measured: this set has no fixes from you to learn from.`}"><div class="rv-gb-track"><span class="rv-gb-na">Not measured here</span></div><span class="rv-gb-val is-muted">–</span></div>`;
-            }
-            const correct = Math.round(v * s.n);
-            delay += 50;
-            return html`<div class="rv-gb-row" role="cell" data-tip="${`<div class="tip-title">${esc(s.name)} · ${esc(sys.label)}</div><div class="tip-row"><span>Sorted correctly</span><b>${correct} of ${s.n}</b></div><div class="tip-row"><span>Share</span><b>${pc(v)}</b></div>`}">
-              <div class="rv-gb-track"><i style="--w:${(v * 100).toFixed(2)}%;--c:${raw(sys.color)};--d:${delay}ms"></i></div>
-              <span class="rv-gb-val ${i === 0 ? 'is-muted' : ''}">${pc(v)}</span></div>`;
-          })}
-        </div></div>`)}
-      <div class="rv-gb-axis" aria-hidden="true">${ticks.map((t) => html`<span style="left:${t}%">${t}%</span>`)}</div>
+    <div class="rv-chart-legend" aria-hidden="true">${SYSTEMS.map((s) => html`<span class="key"><i class="rv-dp-dot ${s.cls}"></i>${s.label}</span>`)}</div>
+    <div class="rv-dp" role="table" aria-label="Share of transactions sorted correctly, for each test">
+      <div class="rv-dp-head" role="row">
+        <span role="columnheader" class="sr-only">Test</span>
+        <span class="rv-dp-scale" aria-hidden="true">${ticks.map((t) => html`<span style="left:${((t - lo) / (100 - lo)) * 100}%">${t}%</span>`)}</span>
+        ${SYSTEMS.map((s) => html`<span class="rv-dp-col" role="columnheader">${s.short}</span>`)}
+      </div>
+      ${d.sets.map((s) => html`<div class="rv-dp-row" role="row">
+        <div class="rv-dp-name" role="rowheader"><b>${s.name}</b><small>${s.sub}</small></div>
+        <div class="rv-dp-track" aria-hidden="true">
+          ${ticks.map((t) => html`<i class="rv-dp-grid" style="left:${((t - lo) / (100 - lo)) * 100}%"></i>`)}
+          ${s.vals[1] != null && s.vals[2] != null ? html`<i class="rv-dp-range" style="left:${x(s.vals[1])};width:calc(${x(s.vals[2])} - ${x(s.vals[1])})"></i>` : ''}
+          ${SYSTEMS.map((sys, i) => (s.vals[i] == null ? '' : html`<i class="rv-dp-dot ${sys.cls}" style="left:${x(s.vals[i])}"></i>`))}
+        </div>
+        ${SYSTEMS.map((sys, i) => (s.vals[i] == null
+          ? html`<span class="rv-dp-v is-na" role="cell" data-label="${sys.short}" data-tip="Not measured: this test has no fixes from you to learn from.">–</span>`
+          : html`<span class="rv-dp-v ${sys.cls}" role="cell" data-label="${sys.short}" data-tip="${`<div class="tip-title">${esc(s.name)} · ${esc(sys.short)}</div><div class="tip-row"><span>Sorted correctly</span><b>${Math.round(s.vals[i] * s.n)} of ${s.n}</b></div>`}">${pc(s.vals[i])}</span>`))}
+      </div>`)}
     </div>
     <div class="rv-chart-note">
-      <p>${allSame ? html`<b>The AI alone and KharchaSaathi’s first try scored the same.</b> ` : ''}<b>The jump to 100% comes from remembering your fixes.</b> On the held-out months, it learned only from your August fixes and was scored on September and October.${behind ? ` On the ${behind.name.charAt(0).toLowerCase() + behind.name.slice(1)}, the AI alone scored a little higher than the first try (${pc(behind.vals[0])} against ${pc(behind.vals[1])}).` : ''}</p>
-      <p><b>It is not perfect.</b> On the two harder sets it got ${fmt.n(d.misses.filter((m) => m.mono).length)} of ${fmt.n(d.sets.slice(2).reduce((a, s) => a + s.n, 0))} wrong. Most misses are label disagreements${exText}.</p>
+      <p><b>The jump to 100% comes from remembering your fixes.</b> On September and October, it had only learned from your August fixes.${behind ? ` On the ${behind.name.replace(/^\d+\s+/, '')}, the AI alone did a little better than the first try (${pc(behind.vals[0])} against ${pc(behind.vals[1])}).` : ''}</p>
+      <p><b>It is not perfect.</b> On the two harder tests it got ${fmt.n(d.misses.filter((m) => m.mono).length)} of ${fmt.n(d.sets.slice(2).reduce((a, s) => a + s.n, 0))} wrong. Most are close calls${exText}.</p>
     </div>
     ${d.misses.length ? html`<details class="rv-misses"><summary>${ic('chev')}See every miss (${d.misses.length})</summary>
       <div class="rv-miss-grid">${d.misses.map((m) => html`<div class="rv-miss">${m.mono ? html`<code>${m.text}</code>` : html`<code style="font-family:var(--font-ui);font-weight:600">${m.text}${m.when ? html` <span style="display:inline;color:var(--ink-3);font-weight:400">· ${fmt.date(m.when)}</span>` : ''}</code>`}
@@ -163,7 +160,6 @@ function chart(d) {
 
 function caught(d) {
   const P2 = d.real.map((r) => ({ r, meta: DETECTORS.find((x) => x.re.test(r.detector)) || { name: r.detector, sub: '', color: 'var(--ink-2)' } }));
-  const minP = Math.min(...d.real.map((r) => r.precision)), minR = Math.min(...d.real.map((r) => r.recall));
   let k = 0;
   return html`<div class="card rv-det">
     ${P2.map(({ r, meta }) => {
@@ -183,8 +179,7 @@ function caught(d) {
       <div class="rv-det-res">${d.decoy.predicted ? html`<span class="badge badge-bad">Wrongly flagged</span>` : html`<span class="rv-tick">${ic('check')}</span><b>Correctly left alone</b>`}</div>
     </div>` : ''}
   </div>
-  <div class="rv-det-key"><span><i></i>One dot is one planted problem it found</span><span><i class="is-miss"></i>A planted problem it missed (none)</span></div>
-  <p class="small" style="margin:14px 0 0;max-width:72ch">When it flags something, it was right ${pc(minP)} of the time. Of the real problems we planted, it caught ${pc(minR)}.</p>`;
+  <div class="rv-det-key"><span><i></i>One dot is one planted problem it found</span></div>`;
 }
 
 function safety(d) {
@@ -195,7 +190,7 @@ function safety(d) {
       <h3>${g.name}<span>${g.list.filter((c) => c.result === 'PASS').length} of ${g.list.length}</span></h3>
       <ul class="rv-safe-list">${g.list.map((c) => html`<li>
         <span class="rv-tick ${c.result === 'PASS' ? '' : 'is-fail'}" aria-label="${c.result === 'PASS' ? 'Passed' : 'Failed'}">${ic(c.result === 'PASS' ? 'check' : 'x')}</span>
-        <div><div class="rv-safe-text">${rewrite(c.case)}</div><span class="rv-safe-note" title="${c.note}">${c.note}</span></div></li>`)}</ul>
+        <div class="rv-safe-text">${rewrite(c.case)}</div></li>`)}</ul>
     </div>`)}</div>`;
 }
 
@@ -221,11 +216,11 @@ function pageView(e) {
     <header class="rv-head">
       <p class="rv-crumb"><span class="now">Proof</span><span class="sep">·</span><span>How we tested it</span></p>
       <h1 class="h1">Tested before you trust it.</h1>
-      <p class="lead">Before showing you anything, we checked KharchaSaathi against answers we already knew. <b>The statements are made up</b>, with problems planted on purpose, so we could count exactly what it caught and what it missed. We also tried to trick it, and fed it broken files.</p>
+      <p class="lead"><b>The statements are made up</b>, with problems planted on purpose, so we could count what it caught and missed.</p>
     </header>
     ${stats(d)}
     <section class="rv-sec">
-      <div class="rv-sec-head"><h2 class="h3">Sorting your transactions</h2><p>Every transaction needs the right category, or the budget is wrong. Here is how often it gets it right.</p></div>
+      <div class="rv-sec-head"><h2 class="h3">Sorting your transactions</h2><p>How often it picks the right category.</p></div>
       ${chart(d)}
     </section>
     <section class="rv-sec">
@@ -233,7 +228,7 @@ function pageView(e) {
       ${caught(d)}
     </section>
     <section class="rv-sec">
-      <div class="rv-sec-head"><h2 class="h3">Safety tests</h2><p>We tried to make it do unsafe things, and gave it broken files. ${d.safety.passed === d.safety.total ? `It passed all ${d.safety.total}.` : `It passed ${d.safety.passed} of ${d.safety.total}.`} The small grey line under each one is what it actually said or did.</p></div>
+      <div class="rv-sec-head"><h2 class="h3">Safety tests</h2><p>${d.safety.passed === d.safety.total ? `It passed all ${d.safety.total}.` : `It passed ${d.safety.passed} of ${d.safety.total}.`}</p></div>
       ${safety(d)}
     </section>
     <div class="rv-sec">${bugCard()}</div>
