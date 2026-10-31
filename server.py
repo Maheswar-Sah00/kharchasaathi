@@ -1,30 +1,132 @@
 """KharchaSaathi web server (FastAPI). Run:  python server.py   ->  http://localhost:8000"""
-import json, os, queue, threading
-from fastapi import FastAPI, HTTPException
+import json, os, queue, re, threading, time, uuid
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import db, agent, emails, categorize, safety, llm
+from core import db, agent, emails, categorize, safety, llm, parsers
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
+WEB = os.path.join(ROOT, "web")
+UPLOADS = os.path.join(ROOT, "data_store", "uploads")
 GT = json.load(open(os.path.join(ROOT, "data", "ground_truth.json"), encoding="utf-8"))
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 app = FastAPI(title="KharchaSaathi")
+import api_actions  # noqa: E402  backend product actions (see docs/API.md)
+app.include_router(api_actions.router)
+import api_reminders  # noqa: E402  reminder phone calls (Linphone/SIP), page: /web/call.html
+app.include_router(api_reminders.router)
+app.mount("/web", StaticFiles(directory=WEB), name="web")
 _run_lock = threading.Lock()
 
 
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(ROOT, "web", "index.html"))
+    return FileResponse(os.path.join(WEB, "index.html"), headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/legacy")
+def legacy():
+    """The previous single-file dashboard, kept for comparison."""
+    return FileResponse(os.path.join(WEB, "legacy.html"))
+
+
+# ---------------- statement files ----------------
+def _file_info(path):
+    name = os.path.basename(path)
+    ext = os.path.splitext(name)[1].lower()
+    return {"name": name, "size": os.path.getsize(path), "type": ext.lstrip("."),
+            "kind": "Bank statement" if ext == ".csv" else "Card statement"}
+
+
+def _batch_files(batch):
+    """Uploaded files for a batch id, or the sample files when batch is empty."""
+    if not batch:
+        return agent.default_files()
+    if not re.fullmatch(r"[a-f0-9]{12}", batch or ""):
+        raise HTTPException(400, "Bad upload id")
+    d = os.path.join(UPLOADS, batch)
+    if not os.path.isdir(d):
+        raise HTTPException(404, "Upload not found. Please upload your files again.")
+    files = sorted(os.path.join(d, f) for f in os.listdir(d) if f.lower().endswith((".csv", ".pdf")))
+    if not files:
+        raise HTTPException(400, "No CSV or PDF files in this upload")
+    return files
+
+
+@app.get("/api/files")
+def sample_files():
+    """The sample statements that ship with the demo (Arjun, 24, Bengaluru)."""
+    return {"profile": GT["user_profile"], "files": [_file_info(f) for f in agent.default_files()]}
+
+
+@app.post("/api/upload")
+async def upload(files: list[UploadFile] = File(...)):
+    batch = uuid.uuid4().hex[:12]
+    d = os.path.join(UPLOADS, batch)
+    os.makedirs(d, exist_ok=True)
+    saved, skipped = [], []
+    for f in files:
+        name = os.path.basename(f.filename or "")
+        name = re.sub(r"[^A-Za-z0-9._ -]", "_", name)[:120]
+        if not name.lower().endswith((".csv", ".pdf")):
+            skipped.append({"name": name, "reason": "Only CSV and PDF files are supported"})
+            continue
+        data = await f.read()
+        if len(data) > MAX_UPLOAD_BYTES:
+            skipped.append({"name": name, "reason": "File is bigger than 10 MB"})
+            continue
+        p = os.path.join(d, name)
+        with open(p, "wb") as out:
+            out.write(data)
+        saved.append(_file_info(p))
+    if not saved:
+        raise HTTPException(400, {"message": "No usable files", "skipped": skipped})
+    return {"batch": batch, "files": saved, "skipped": skipped}
+
+
+class PreviewReq(BaseModel):
+    batch: str | None = None
+
+
+@app.post("/api/preview")
+def preview(req: PreviewReq):
+    """Fast check of each file before the audit (no AI calls): rows read, months, rows set aside, errors."""
+    out = []
+    for path in _batch_files(req.batch):
+        info = _file_info(path)
+        try:
+            rows, quarantined = parsers.parse_file(path)
+            months = sorted({r["date"][:7] for r in rows})
+            info.update(ok=True, transactions=len(rows), months=months,
+                        debits=round(sum(r["amount"] for r in rows if r["direction"] == "DR"), 2),
+                        quarantined=[{"reason": q["reason"], "raw": q["raw"][:220]} for q in quarantined])
+        except parsers.ParseError as e:
+            info.update(ok=False, error=str(e), transactions=0, months=[], quarantined=[])
+        out.append(info)
+    return {"files": out}
+
+
+# ---------------- the agent ----------------
 class RunReq(BaseModel):
     goal: str
     savings_target: float = 40
     notes: str = ""
+    batch: str | None = None
+
+
+def _sse(events_iter):
+    def gen():
+        for e in events_iter:
+            yield "data: " + json.dumps(e, default=str, ensure_ascii=False) + "\n\n"
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/api/run")
 def run(req: RunReq):
+    files = _batch_files(req.batch)
     if not _run_lock.acquire(blocking=False):
         raise HTTPException(409, "An audit is already running")
     q: "queue.Queue" = queue.Queue()
@@ -32,7 +134,7 @@ def run(req: RunReq):
 
     def worker():
         try:
-            agent.run(req.goal, profile=profile, savings_target=req.savings_target, on_event=q.put)
+            agent.run(req.goal, files=files, profile=profile, savings_target=req.savings_target, on_event=q.put)
         except Exception as e:  # surface, never crash the stream
             q.put({"type": "error", "text": f"{type(e).__name__}: {e}"})
             q.put({"type": "final", "text": "", "run_id": db.latest_run_id(), "questions": [], "llm_calls": llm.CALLS["n"]})
@@ -41,15 +143,59 @@ def run(req: RunReq):
 
     threading.Thread(target=worker, daemon=True).start()
 
-    def stream():
+    def events():
         while True:
             e = q.get()
-            yield "data: " + json.dumps(e, default=str, ensure_ascii=False) + "\n\n"
+            yield e
             if e.get("type") == "final":
                 break
 
-    return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return _sse(events())
+
+
+def _replay_events(run_id):
+    """Rebuild the live event stream of a finished run from its audit log."""
+    rows = db.q("SELECT event, detail FROM audit_log WHERE run_id=? ORDER BY id", (run_id,))
+    questions = []
+    for r in rows:
+        ev, raw = r["event"], r["detail"] or ""
+        try:
+            d = json.loads(raw)
+        except Exception:
+            d = {"note": raw[:300]}
+        if ev == "goal":
+            yield {"type": "goal", "text": raw}
+        elif ev == "refused_request":
+            yield {"type": "refusal", "text": d.get("reason", "") if isinstance(d, dict) else str(d)}
+        elif ev == "tool_call:update_plan":
+            yield {"type": "replan" if d.get("is_replan") else "plan", "steps": d.get("steps", []), "reason": d.get("reason", "")}
+        elif ev.startswith("tool_call:"):
+            yield {"type": "tool_call", "name": ev.split(":", 1)[1], "input": d}
+        elif ev.startswith("result:") and ev != "result:update_plan":
+            yield {"type": "tool_result", "name": ev.split(":", 1)[1], "output": d,
+                   "is_error": isinstance(d, dict) and "error" in d}
+        elif ev == "ask_user":
+            questions.append(d)
+    run_row = db.q("SELECT * FROM runs WHERE id=?", (run_id,), one=True) or {}
+    yield {"type": "final", "text": run_row.get("summary") or "", "run_id": run_id, "questions": questions,
+           "llm_calls": None, "replay": True}
+
+
+@app.get("/api/replay")
+def replay(run_id: int | None = None, speed: float = 1.0):
+    """Replays a finished run as a live stream (no AI calls, no cost). Used by demos."""
+    rid = run_id or db.latest_run_id()
+    if not rid:
+        raise HTTPException(404, "No finished audit to replay yet")
+    pause = {"goal": 0.3, "plan": 1.2, "replan": 1.4, "tool_call": 0.45, "tool_result": 0.7, "refusal": 1.0, "final": 0.4}
+    speed = min(max(speed, 0.1), 20)
+
+    def events():
+        for e in _replay_events(rid):
+            time.sleep(pause.get(e["type"], 0.4) / speed)
+            yield e
+
+    return _sse(events())
 
 
 @app.get("/api/state")
@@ -91,8 +237,8 @@ def correction(req: CorrReq):
     rid = db.latest_run_id()
     ex = db.q("SELECT description FROM transactions WHERE run_id=? AND merchant=? LIMIT 1", (rid, req.merchant), one=True)
     db.save_correction(req.merchant, req.category, ex["description"] if ex else "")
-    n = db.x("UPDATE transactions SET category=?, cat_source='memory', confidence=1.0, reason='Your correction' "
-             "WHERE run_id=? AND merchant=?", (req.category, rid, req.merchant))
+    db.x("UPDATE transactions SET category=?, cat_source='memory', confidence=1.0, reason='Your correction' "
+         "WHERE run_id=? AND merchant=?", (req.category, rid, req.merchant))
     cnt = db.q("SELECT COUNT(*) AS n FROM transactions WHERE run_id=? AND merchant=?", (rid, req.merchant), one=True)["n"]
     return {"ok": True, "updated": cnt}
 
@@ -113,7 +259,7 @@ def approve(did: int, req: DraftEdit):
         return {"ok": True, "sent": True, "id": resp.get("id")}
     except PermissionError as e:
         return {"ok": False, "sent": False, "blocked": True, "error": str(e)}
-    except RuntimeError as e:
+    except Exception as e:
         return {"ok": False, "sent": False, "error": str(e)}
 
 
@@ -125,7 +271,7 @@ def send_only(did: int):
         return {"ok": True, "sent": True, "id": resp.get("id")}
     except PermissionError as e:
         return {"ok": False, "blocked": True, "error": str(e)}
-    except RuntimeError as e:
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
@@ -155,4 +301,4 @@ def eval_results():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PORT", 8000)))

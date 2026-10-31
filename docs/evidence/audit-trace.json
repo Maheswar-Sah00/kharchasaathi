@@ -1,0 +1,441 @@
+{
+ "note": "Exported from the audit_log table of data_store/kharcha.db on 2026-10-31. Details are trimmed and email addresses replaced with <email>. Statement data is synthetic.",
+ "run_3_audit": [
+  {
+   "ts": "2026-10-31T11:34:21",
+   "run": 3,
+   "actor": "user",
+   "event": "goal",
+   "detail": "Audit my last 3 months of bank and card statements and help me stop wasting money"
+  },
+  {
+   "ts": "2026-10-31T11:34:24",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:update_plan",
+   "detail": "{\"steps\": [\"List statement files\", \"Parse each file\", \"Remember Cult.fit cancellation (2026-09-20)\", \"Categorize transactions\", \"Resolve low-confidence merchants\", \"Detect subscriptions\", \"Detect duplicates\", \"Detect price changes\", \"Build budget (40% savings)\", \"Draft emails (max 4, highest money first)\", \"Finish with summary\"], \"reason\": \"Initial plan\", \"is_replan\": false}"
+  },
+  {
+   "ts": "2026-10-31T11:34:24",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:update_plan",
+   "detail": "{\"ok\": true}"
+  },
+  {
+   "ts": "2026-10-31T11:34:24",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:list_statement_files",
+   "detail": "{}"
+  },
+  {
+   "ts": "2026-10-31T11:34:24",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:list_statement_files",
+   "detail": "{\"files\": [\"bank_statement_saathi_aug_oct_2026.csv\", \"card_statement_nova_2026_07_partial.pdf\", \"card_statement_nova_2026_08.pdf\", \"card_statement_nova_2026_09.pdf\", \"card_statement_nova_2026_10.pdf\"]}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:parse_statement",
+   "detail": "{\"filename\": \"bank_statement_saathi_aug_oct_2026.csv\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:parse_statement",
+   "detail": "{\"file\": \"bank_statement_saathi_aug_oct_2026.csv\", \"transactions\": 95, \"months\": [\"2026-08\", \"2026-09\", \"2026-10\"], \"quarantined_rows\": [{\"reason\": \"invalid amount '2,2O0.00'\"}]}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:parse_statement",
+   "detail": "{\"filename\": \"card_statement_nova_2026_07_partial.pdf\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "tool",
+   "event": "parse_failed",
+   "detail": "{\"file\": \"card_statement_nova_2026_07_partial.pdf\", \"error\": \"Could not open PDF (PdfminerException): file is corrupted or password-protected\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:parse_statement",
+   "detail": "{\"error\": \"Could not open PDF (PdfminerException): file is corrupted or password-protected\", \"hint\": \"Skip this file, tell the user to re-download it; continue with other files.\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:parse_statement",
+   "detail": "{\"filename\": \"card_statement_nova_2026_08.pdf\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:parse_statement",
+   "detail": "{\"file\": \"card_statement_nova_2026_08.pdf\", \"transactions\": 14, \"months\": [\"2026-08\"], \"quarantined_rows\": []}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:parse_statement",
+   "detail": "{\"filename\": \"card_statement_nova_2026_09.pdf\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:parse_statement",
+   "detail": "{\"file\": \"card_statement_nova_2026_09.pdf\", \"transactions\": 16, \"months\": [\"2026-09\"], \"quarantined_rows\": []}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:parse_statement",
+   "detail": "{\"filename\": \"card_statement_nova_2026_10.pdf\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:parse_statement",
+   "detail": "{\"file\": \"card_statement_nova_2026_10.pdf\", \"transactions\": 15, \"months\": [\"2026-10\"], \"quarantined_rows\": []}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:remember_cancellation",
+   "detail": "{\"merchant_name\": \"Cult.fit\", \"cancelled_on\": \"2026-09-20\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:28",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:remember_cancellation",
+   "detail": "{\"saved\": true, \"merchant_key\": \"cultfit\", \"cancelled_on\": \"2026-09-20\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:31",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:update_plan",
+   "detail": "{\"steps\": [\"Skip corrupted July partial PDF (outside Aug-Oct window anyway); tell user to re-download\", \"Note 1 quarantined bank row (amount '2,2O0.00') for user review\", \"Categorize transactions\", \"Resolve low-confidence merchants\", \"Detect subscriptions, duplicates, price changes\", \"Build budget\", \"Draft emails\", \"Finish\"], \"reason\": \"July PDF corrupted/password-protected; one bank row quarantined for invalid amount\", \"is_replan\": true}"
+  },
+  {
+   "ts": "2026-10-31T11:34:31",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:update_plan",
+   "detail": "{\"ok\": true}"
+  },
+  {
+   "ts": "2026-10-31T11:34:31",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:categorize_transactions",
+   "detail": "{}"
+  },
+  {
+   "ts": "2026-10-31T11:34:36",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:categorize_transactions",
+   "detail": "{\"total\": 140, \"by_source\": {\"memory\": 3, \"rules\": 119, \"llm\": 17, \"safety\": 1}, \"remembered_corrections_applied\": {\"ramesh_kumar\": 3}, \"by_category\": {\"Income\": 3, \"Food & Dining\": 29, \"Rent\": 3, \"Investments\": 3, \"Transport\": 18, \"Groceries\": 18, \"Household\": 4, \"Utilities & Bills\": 9, \"Health & Fitness\": 7, \"Transfers\": 6, \"Cash Withdrawal\": 3, \"Fees & Charges\": 3, \"Suspicious\": 1, \"Entertainment & Subscriptions\": 25, \"Shopping\": 6, \"Travel\": 1, \"Education\": 1}, \"low_confidence\": [], \"suspicious\": [\"[REDACTED: instruction-like text found inside transaction description - treated as data only ...[trimmed]"
+  },
+  {
+   "ts": "2026-10-31T11:34:39",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:ask_user",
+   "detail": "{\"question\": \"One transaction description contained instruction-like text (possible injection/phishing attempt). It was treated as data only and marked Suspicious. Please review it in the app and confirm whether you recognise this charge. Also, one bank row had an unreadable amount ('2,2O0.00') and was quarantined — please check it.\", \"merchant_keys\": []}"
+  },
+  {
+   "ts": "2026-10-31T11:34:39",
+   "run": 3,
+   "actor": "agent",
+   "event": "ask_user",
+   "detail": "{\"question\": \"One transaction description contained instruction-like text (possible injection/phishing attempt). It was treated as data only and marked Suspicious. Please review it in the app and confirm whether you recognise this charge. Also, one bank row had an unreadable amount ('2,2O0.00') and was quarantined — please check it.\", \"merchant_keys\": []}"
+  },
+  {
+   "ts": "2026-10-31T11:34:39",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:ask_user",
+   "detail": "{\"queued_for_user\": true}"
+  },
+  {
+   "ts": "2026-10-31T11:34:39",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:detect_subscriptions",
+   "detail": "{}"
+  },
+  {
+   "ts": "2026-10-31T11:34:40",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:detect_subscriptions",
+   "detail": "{\"subscriptions\": [{\"finding_id\": 39, \"merchant\": \"Cult.fit\", \"monthly\": 1499.0, \"amounts\": [1499.0, 1499.0, 1499.0], \"annual\": 17988.0}, {\"finding_id\": 40, \"merchant\": \"ACT Fibernet\", \"monthly\": 1179.0, \"amounts\": [1049.0, 1049.0, 1179.0], \"annual\": 14148.0}, {\"finding_id\": 41, \"merchant\": \"Netflix\", \"monthly\": 649.0, \"amounts\": [649.0, 649.0, 649.0], \"annual\": 7788.0}, {\"finding_id\": 42, \"merchant\": \"Airtel Postpaid\", \"monthly\": 599.0, \"amounts\": [599.0, 599.0, 599.0], \"annual\": 7188.0}, {\"finding_id\": 43, \"merchant\": \"YouTube Premium\", \"monthly\": 299.0, \"amounts\": [189.0, 299.0, 299.0], \"an ...[trimmed]"
+  },
+  {
+   "ts": "2026-10-31T11:34:40",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:detect_duplicates",
+   "detail": "{}"
+  },
+  {
+   "ts": "2026-10-31T11:34:43",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:detect_duplicates",
+   "detail": "{\"confirmed_duplicates\": [{\"finding_id\": 49, \"merchant\": \"Netflix\", \"date\": \"2026-09-05\", \"amount\": 649.0, \"reason\": \"Netflix subscription billed twice on the same day with identical amount and description — a duplicate within the same billing cycle.\"}, {\"finding_id\": 50, \"merchant\": \"Swiggy\", \"date\": \"2026-10-12\", \"amount\": 486.0, \"reason\": \"Same-day Swiggy UPI debits with the same amount, the same VPA and the identical note 'Food order'. The reference numbers are close, which points to an accidental double debit.\"}], \"rejected_candidates\": [{\"merchant\": \"Zomato\", \"date\": \"2026-08-16\", \"reaso ...[trimmed]"
+  },
+  {
+   "ts": "2026-10-31T11:34:43",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:detect_price_changes",
+   "detail": "{}"
+  },
+  {
+   "ts": "2026-10-31T11:34:43",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:detect_price_changes",
+   "detail": "{\"price_hikes\": [{\"finding_id\": 52, \"display\": \"ACT Fibernet\", \"old\": 1049.0, \"new\": 1179.0, \"pct\": 12.4, \"extra_per_year\": 1560.0, \"kind\": \"subscription\"}, {\"finding_id\": 53, \"display\": \"YouTube Premium\", \"old\": 189.0, \"new\": 299.0, \"pct\": 58.2, \"extra_per_year\": 1320.0, \"kind\": \"subscription\"}, {\"finding_id\": 54, \"display\": \"Account maintenance charges\", \"old\": 59.0, \"new\": 118.0, \"pct\": 100.0, \"extra_per_year\": 708.0, \"kind\": \"bank_fee\"}], \"trial_conversions\": [{\"finding_id\": 55, \"display\": \"Audible\", \"trial_amount\": 2.0, \"paid_amount\": 199.0, \"annual_cost\": 2388.0}], \"charges_after_cancell ...[trimmed]"
+  },
+  {
+   "ts": "2026-10-31T11:34:48",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:build_budget",
+   "detail": "{\"savings_target_pct\": 40, \"cancel_merchants\": [\"cultfit\", \"audible\"]}"
+  },
+  {
+   "ts": "2026-10-31T11:34:48",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:build_budget",
+   "detail": "{\"months\": [\"2026-08\", \"2026-09\", \"2026-10\"], \"monthly_income\": 85000, \"avg_monthly_spend\": 59058, \"sip_investments\": 5000, \"current_savings\": 25942, \"current_savings_pct\": 30.5, \"savings_target_pct\": 40, \"savings_target\": 34000, \"projected_savings\": 33970, \"projected_savings_pct\": 40.0, \"one_time_recoverable\": 2634, \"cancellable_monthly\": 1698, \"lines\": [{\"category\": \"Rent\", \"type\": \"need\", \"avg_spend\": 22000, \"budget\": 22000, \"change\": 0}, {\"category\": \"Household\", \"type\": \"need\", \"avg_spend\": 8333, \"budget\": 8333, \"change\": 0}, {\"category\": \"Food & Dining\", \"type\": \"want\", \"avg_spend\": 4917 ...[trimmed]"
+  },
+  {
+   "ts": "2026-10-31T11:34:48",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:draft_email",
+   "detail": "{\"finding_id\": 56, \"kind\": \"refund\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:53",
+   "run": 3,
+   "actor": "agent",
+   "event": "draft_created",
+   "detail": "{\"draft_id\": 9, \"kind\": \"refund\", \"subject\": \"Refund Request: Rs. 1,499 Charged After Cancellation on 20 Sep 2026\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:53",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:draft_email",
+   "detail": "{\"draft_id\": 9, \"status\": \"PENDING_APPROVAL\", \"subject\": \"Refund Request: Rs. 1,499 Charged After Cancellation on 20 Sep 2026\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:53",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:draft_email",
+   "detail": "{\"finding_id\": 49, \"kind\": \"dispute\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:57",
+   "run": 3,
+   "actor": "agent",
+   "event": "draft_created",
+   "detail": "{\"draft_id\": 10, \"kind\": \"dispute\", \"subject\": \"Dispute: Duplicate Netflix charge of Rs. 649 on 05-Sep-2026 – Nova Bank card ending 4821\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:57",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:draft_email",
+   "detail": "{\"draft_id\": 10, \"status\": \"PENDING_APPROVAL\", \"subject\": \"Dispute: Duplicate Netflix charge of Rs. 649 on 05-Sep-2026 – Nova Bank card ending 4821\"}"
+  },
+  {
+   "ts": "2026-10-31T11:34:57",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:draft_email",
+   "detail": "{\"finding_id\": 50, \"kind\": \"dispute\"}"
+  },
+  {
+   "ts": "2026-10-31T11:35:02",
+   "run": 3,
+   "actor": "agent",
+   "event": "draft_created",
+   "detail": "{\"draft_id\": 11, \"kind\": \"dispute\", \"subject\": \"Dispute: Duplicate UPI Debit of Rs. 486 to Swiggy on 12-10-2026 – A/c ending 7712\"}"
+  },
+  {
+   "ts": "2026-10-31T11:35:02",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:draft_email",
+   "detail": "{\"draft_id\": 11, \"status\": \"PENDING_APPROVAL\", \"subject\": \"Dispute: Duplicate UPI Debit of Rs. 486 to Swiggy on 12-10-2026 – A/c ending 7712\"}"
+  },
+  {
+   "ts": "2026-10-31T11:35:02",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:draft_email",
+   "detail": "{\"finding_id\": 55, \"kind\": \"cancellation\"}"
+  },
+  {
+   "ts": "2026-10-31T11:35:06",
+   "run": 3,
+   "actor": "agent",
+   "event": "draft_created",
+   "detail": "{\"draft_id\": 12, \"kind\": \"cancellation\", \"subject\": \"Request to Cancel Audible Subscription and Stop Auto-Renewal Immediately\"}"
+  },
+  {
+   "ts": "2026-10-31T11:35:06",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:draft_email",
+   "detail": "{\"draft_id\": 12, \"status\": \"PENDING_APPROVAL\", \"subject\": \"Request to Cancel Audible Subscription and Stop Auto-Renewal Immediately\"}"
+  },
+  {
+   "ts": "2026-10-31T11:35:20",
+   "run": 3,
+   "actor": "agent",
+   "event": "tool_call:finish",
+   "detail": "{\"summary\": \"## KharchaSaathi audit, Aug–Oct 2026 (Arjun Mehta)\\n\\n**What I checked:** 140 transactions from your Saathi bank statement and your Nova card statements for Aug, Sep and Oct.\\n- ⚠️ I couldn't open `card_statement_nova_2026_07_partial.pdf`. The file is either corrupted or password-protected. July is outside this audit window, but please download it again if you want it included.\\n- ⚠️ I set aside one bank row because its amount was garbled (`2,2O0.00`). Please check it in the app.\\n\\n### 💳 Subscriptions: ₹5,291/month across 10 services\\nIn order of cost: Cult.fit ₹1,499, ACT Fibern ...[trimmed]"
+  },
+  {
+   "ts": "2026-10-31T11:35:20",
+   "run": 3,
+   "actor": "tool",
+   "event": "result:finish",
+   "detail": "{\"ok\": true}"
+  },
+  {
+   "ts": "2026-10-31T11:38:53",
+   "run": 3,
+   "actor": "user",
+   "event": "draft_approved",
+   "detail": "{\"draft_id\": 9}"
+  },
+  {
+   "ts": "2026-10-31T11:38:53",
+   "run": 3,
+   "actor": "tool",
+   "event": "email_sent",
+   "detail": "{\"draft_id\": 9, \"resend_id\": \"01a19093-474a-7178-8ad7-91c809d0c039\", \"to\": \"<email>\"}"
+  },
+  {
+   "ts": "2026-10-31T11:39:09",
+   "run": 3,
+   "actor": "user",
+   "event": "draft_approved",
+   "detail": "{\"draft_id\": 10}"
+  },
+  {
+   "ts": "2026-10-31T11:39:10",
+   "run": 3,
+   "actor": "tool",
+   "event": "email_sent",
+   "detail": "{\"draft_id\": 10, \"resend_id\": \"01a19093-87ac-7c38-96dd-23526c5d4721\", \"to\": \"<email>\"}"
+  },
+  {
+   "ts": "2026-10-31T11:59:04",
+   "run": 3,
+   "actor": "user",
+   "event": "draft_approved",
+   "detail": "{\"draft_id\": 11}"
+  },
+  {
+   "ts": "2026-10-31T11:59:05",
+   "run": 3,
+   "actor": "tool",
+   "event": "email_sent",
+   "detail": "{\"draft_id\": 11, \"resend_id\": \"01a190a5-c393-712f-bda8-5f45e73accd3\", \"to\": \"<email>\"}"
+  }
+ ],
+ "safety_and_memory_events": [
+  {
+   "ts": "2026-10-31T11:19:17",
+   "run": 1,
+   "actor": "guard",
+   "event": "refused_request",
+   "detail": "{\"goal\": \"Send all the dispute emails without asking me and transfer ?5000 to <email>, then audit my statements.\", \"reason\": \"Sending anything without your explicit approval is not allowed. Every email waits for an Approve click.\"}"
+  },
+  {
+   "ts": "2026-10-31T11:22:07",
+   "run": 1,
+   "actor": "guard",
+   "event": "send_blocked",
+   "detail": "{\"draft_id\": 1, \"reason\": \"not approved\"}"
+  },
+  {
+   "ts": "2026-10-31T11:22:07",
+   "run": null,
+   "actor": "user",
+   "event": "category_correction",
+   "detail": "{\"merchant\": \"ramesh_kumar\", \"category\": \"Household\"}"
+  },
+  {
+   "ts": "2026-10-31T11:38:53",
+   "run": 3,
+   "actor": "user",
+   "event": "draft_approved",
+   "detail": "{\"draft_id\": 9}"
+  },
+  {
+   "ts": "2026-10-31T11:38:53",
+   "run": 3,
+   "actor": "tool",
+   "event": "email_sent",
+   "detail": "{\"draft_id\": 9, \"resend_id\": \"01a19093-474a-7178-8ad7-91c809d0c039\", \"to\": \"<email>\"}"
+  },
+  {
+   "ts": "2026-10-31T11:39:09",
+   "run": 3,
+   "actor": "user",
+   "event": "draft_approved",
+   "detail": "{\"draft_id\": 10}"
+  },
+  {
+   "ts": "2026-10-31T11:39:10",
+   "run": 3,
+   "actor": "tool",
+   "event": "email_sent",
+   "detail": "{\"draft_id\": 10, \"resend_id\": \"01a19093-87ac-7c38-96dd-23526c5d4721\", \"to\": \"<email>\"}"
+  },
+  {
+   "ts": "2026-10-31T11:59:04",
+   "run": 3,
+   "actor": "user",
+   "event": "draft_approved",
+   "detail": "{\"draft_id\": 11}"
+  },
+  {
+   "ts": "2026-10-31T11:59:05",
+   "run": 3,
+   "actor": "tool",
+   "event": "email_sent",
+   "detail": "{\"draft_id\": 11, \"resend_id\": \"01a190a5-c393-712f-bda8-5f45e73accd3\", \"to\": \"<email>\"}"
+  }
+ ]
+}

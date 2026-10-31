@@ -84,7 +84,9 @@ def get_cancellations():
 
 
 def latest_run_id():
-    r = q("SELECT id FROM runs ORDER BY id DESC LIMIT 1", one=True)
+    """The newest finished audit. A failed or still-running audit must not blank the report,
+    so one of those only counts when no audit has finished yet."""
+    r = q("SELECT id FROM runs ORDER BY (status='done') DESC, id DESC LIMIT 1", one=True)
     return r["id"] if r else None
 
 

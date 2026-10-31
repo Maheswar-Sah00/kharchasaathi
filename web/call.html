@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reminder Calls · KharchaSaathi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#f6f7f5;--card:#fff;--ink:#14201b;--muted:#5d6b64;--line:#e4e8e5;--accent:#0f9d6b;--accent-ink:#fff;
+        --soft:#dcf5ea;--warn:#b45309;--warn-soft:#fef3c7;--bad:#b91c1c;--bad-soft:#fee2e2}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f1412;--card:#18201c;--ink:#e8efeb;--muted:#9aa8a1;--line:#2a3530;
+        --accent:#34d399;--accent-ink:#06261a;--soft:#123527;--warn:#fbbf24;--warn-soft:#3a2c0a;--bad:#f87171;--bad-soft:#3b1414}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif}
+  main{max-width:980px;margin:0 auto;padding:28px 16px 60px}
+  a{color:var(--accent)}
+  h1{font-size:28px;margin:0 0 4px;letter-spacing:-.02em} .lead{color:var(--muted);margin:0 0 22px}
+  .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:16px} @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+  .card h2{font-size:16px;margin:0 0 12px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+  .row:first-of-type{border-top:0}
+  .m{font-weight:600} .sub{color:var(--muted);font-size:13px}
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--soft);color:var(--accent);white-space:nowrap}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.bad{background:var(--bad-soft);color:var(--bad)}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
+  .seg button{border:0;background:transparent;color:var(--ink);padding:7px 14px;font:inherit;cursor:pointer}
+  .seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+  textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;background:var(--bg);color:var(--ink);resize:vertical}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .btn:disabled{opacity:.55;cursor:wait}
+  .status{margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--bg);font-size:14px;display:none}
+  .status.show{display:block} .status.ok{background:var(--soft)} .status.err{background:var(--bad-soft);color:var(--bad)}
+  .guard{font-size:13px;color:var(--muted);margin:10px 0 0;padding-left:18px} .guard li{margin:2px 0}
+  label{display:flex;align-items:center;gap:8px;margin:8px 0}
+  select{font:inherit;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+  .setup{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:12px 14px;margin-bottom:16px;display:none}
+  code{font-family:ui-monospace,Consolas,monospace;font-size:13px}
+  .ring{display:inline-block;animation:ring 1s infinite} @keyframes ring{0%,100%{transform:rotate(0)}25%{transform:rotate(-15deg)}75%{transform:rotate(15deg)}}
+</style>
+</head>
+<body>
+<main>
+  <p class="sub"><a href="/legacy">← Back to the audit</a></p>
+  <h1>📞 Reminder calls</h1>
+  <p class="lead">People ignore the bank's pre-debit SMS. A phone call gets attention. KharchaSaathi calls you <b>before a subscription renews</b> and <b>once a month</b> with a money check-in.</p>
+
+  <div class="setup" id="setup"></div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>What the agent will say</h2>
+      <div class="seg"><button data-mode="renewal" class="on">Before renewals</button><button data-mode="monthly">Monthly check-in</button></div>
+      <textarea id="script" placeholder="Click “Write script” to let the agent write it from your latest audit…"></textarea>
+      <div class="sub" id="src"></div>
+      <div class="btns">
+        <button class="btn" id="write">✍️ Write script</button>
+        <button class="btn primary" id="call">📞 Call my phone now</button>
+        <button class="btn" id="play">🔊 Play here instead</button>
+      </div>
+      <div class="status" id="status"></div>
+      <ul class="guard">
+        <li>Calls only <b id="callto">your allowlisted number</b>. The app can't choose anyone else.</li>
+        <li>Never speaks card or account numbers, OTP, CVV or PIN.</li>
+        <li>Scheduled calls only after you switch them on. Every call is in the audit log.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Coming up</h2>
+      <div id="upcoming" class="sub">Loading…</div>
+    </section>
+
+    <section class="card">
+      <h2>Automatic calls</h2>
+      <label><input type="checkbox" id="enabled"> Call me automatically</label>
+      <label>Before a renewal: <select id="days"><option>1</option><option selected>2</option><option>3</option><option>5</option><option>7</option></select> days</label>
+      <label><input type="checkbox" id="monthly" checked> Monthly check-in on the 1st</label>
+      <div class="btns"><button class="btn" id="save">Save</button><button class="btn primary" id="check">⏱️ Run automatic check now</button></div>
+      <div class="sub" style="margin-top:6px">The app checks by itself every 30 minutes. This button runs that same check immediately.</div>
+      <div class="sub" id="due" style="margin-top:8px"></div>
+    </section>
+
+    <section class="card">
+      <h2>Recent calls</h2>
+      <div id="calls" class="sub">None yet.</div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let mode = 'renewal';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money = n => n == null ? '' : '₹' + Number(n).toLocaleString('en-IN');
+function status(text, kind) { const el = $('#status'); el.className = 'status show ' + (kind || ''); el.innerHTML = text; }
+
+async function api(path, body) {
+  const r = await fetch('/api/reminders' + path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)} : {});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
+}
+
+async function load() {
+  const d = await api('');
+  $('#callto').textContent = d.call_to || 'your allowlisted number';
+  if (!d.configured) {
+    $('#setup').style.display = 'block';
+    $('#setup').innerHTML = '⚠️ Phone calls aren\'t set up yet. Add to <code>.env</code>: <code>' + d.missing.join(', ') +
+      '</code>, then restart the server. You can still write the script and use <b>Play here instead</b>.';
+  }
+  const ups = d.upcoming || [];
+  $('#upcoming').innerHTML = ups.length ? ups.slice(0, 8).map(u => `
+    <div class="row"><div><div class="m">${esc(u.display)} · ${money(u.amount)}</div>
+      <div class="sub">${esc(u.date)}${u.risk ? ' · ' + esc(u.risk) : ''}</div></div>
+      <span class="pill ${u.priority === 0 ? 'bad' : u.priority === 1 ? 'warn' : ''}">in ${u.days_left} day${u.days_left === 1 ? '' : 's'}</span></div>`).join('')
+    : 'Run the audit first. Renewals come from the subscriptions it finds.';
+  const s = d.settings || {};
+  $('#enabled').checked = !!s.enabled; $('#monthly').checked = !!s.monthly; $('#days').value = String(s.days_before || 2);
+  $('#due').textContent = s.enabled ? (d.due_today.length ? 'Due today: ' + d.due_today.map(x => x[0]).join(', ') : 'Nothing due today.') : 'Automatic calls are off.';
+  const calls = d.recent_calls || [];
+  $('#calls').innerHTML = calls.length ? calls.map(c => {
+    let det = {}; try { det = JSON.parse(c.detail || '{}'); } catch (e) {}
+    const pill = c.status === 'answered' ? '' : c.status === 'failed' ? 'bad' : 'warn';
+    return `<div class="row"><div><div class="m">${esc(c.mode)} · ${esc(c.ts.replace('T', ' '))}</div>
+      <div class="sub">${esc(det.error || (det.callee_hung_up ? 'You hung up early' : 'Message played'))}</div></div>
+      <span class="pill ${pill}">${esc(c.status)}</span></div>`; }).join('') : 'None yet.';
+}
+
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.seg button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); mode = b.dataset.mode; $('#script').value = ''; $('#src').textContent = '';
+});
+
+$('#write').onclick = async () => {
+  const b = $('#write'); b.disabled = true; b.textContent = '✍️ Writing…';
+  try {
+    const r = await api('/script', {mode, days_ahead: 7});
+    $('#script').value = r.script || 'Nothing to remind about. Run the audit first.';
+    $('#src').textContent = r.source === 'claude' ? 'Written by Claude from your audit findings' : 'Written from a template (' + r.source + ')';
+  } catch (e) { status('Couldn\'t write the script: ' + esc(e.message), 'err'); }
+  b.disabled = false; b.textContent = '✍️ Write script';
+};
+
+$('#call').onclick = async () => {
+  const script = $('#script').value.trim();
+  if (!script) return status('Write the script first.', 'err');
+  const b = $('#call'); b.disabled = true;
+  status('<span class="ring">📞</span> Calling ' + esc($('#callto').textContent) + '… answer on your phone (Linphone app).');
+  try {
+    const r = await api('/call', {script, mode});
+    status('✅ Call answered and the message was played' + (r.callee_hung_up ? ' (you hung up early)' : '') + '.', 'ok');
+  } catch (e) { status('❌ ' + esc(e.message) + '<br><span class="sub">Tip: use “Play here instead” as a fallback.</span>', 'err'); }
+  b.disabled = false; load();
+};
+
+$('#play').onclick = () => {
+  const t = $('#script').value.trim();
+  if (!t || !('speechSynthesis' in window)) return status(t ? 'This browser can\'t speak text.' : 'Write the script first.', 'err');
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(t);
+  const v = speechSynthesis.getVoices().find(v => v.lang === 'en-IN'); if (v) u.voice = v;
+  u.rate = 0.95; speechSynthesis.speak(u);
+  status('🔊 Playing the reminder here…');
+};
+
+$('#save').onclick = async () => {
+  await api('/settings', {enabled: $('#enabled').checked, days_before: Number($('#days').value), monthly: $('#monthly').checked});
+  status('Saved.', 'ok'); load();
+};
+
+$('#check').onclick = async () => {
+  const b = $('#check'); b.disabled = true;
+  await api('/settings', {enabled: $('#enabled').checked, days_before: Number($('#days').value), monthly: $('#monthly').checked});
+  status('<span class="ring">⏱️</span> Agent is checking what is due… if something is, your phone will ring.');
+  try {
+    const r = await api('/check-now', {});
+    if (!r.enabled || !r.due.length) status(esc(r.note), r.enabled ? '' : 'err');
+    else status(r.results.map(x => x.status === 'answered'
+      ? '✅ Automatic ' + esc(x.mode) + ' call placed and answered.<br><span class="sub">' + esc(x.script) + '</span>'
+      : '❌ Automatic ' + esc(x.mode) + ' call failed: ' + esc(x.error)).join('<br>'),
+      r.results.every(x => x.status === 'answered') ? 'ok' : 'err');
+  } catch (e) { status('❌ ' + esc(e.message), 'err'); }
+  b.disabled = false; load();
+};
+
+load().catch(e => status('Couldn\'t load: ' + esc(e.message), 'err'));
+</script>
+</body>
+</html>
