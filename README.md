@@ -6,7 +6,7 @@
 
 | 💰 Found to recover | 📦 Subscriptions found | 🎯 Accuracy | 🛡️ Safety cases | 🧪 Automated tests |
 |:--:|:--:|:--:|:--:|:--:|
-| **₹2,634** | **10** (₹5,291/month) | **97.1% → 100%** after learning from corrections | **17 of 17** passed | **72** passed |
+| **₹2,634** | **10** (₹5,291/month) | **97.1% → 100%** after learning from corrections | **17 of 17** passed | **73** passed |
 
 All figures come from synthetic statements with planted problems. See [Evidence](#-evidence) and [Known limits](#-known-limits).
 
@@ -259,7 +259,7 @@ These went only to the project's demo inbox, with the intended recipient written
 
 ```text
 python -m pytest tests -q
-72 passed, 1 warning
+73 passed, 1 warning
 ```
 
 **One bug the evaluation caught:** an outgoing "MAID SALARY" payment was labelled Income by a rule. Rules now check the direction of the money.
