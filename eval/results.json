@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-31T11:04:40",
+  "generated_at": "2026-10-31T11:22:53",
   "model": "claude-opus-5-5",
   "n_labeled": 140,
   "categorization": {
@@ -342,6 +342,6 @@
   "llm_calls": {
     "n": 8,
     "in": 16670,
-    "out": 12343
+    "out": 12413
   }
 }

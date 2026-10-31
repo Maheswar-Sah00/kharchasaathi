@@ -39,10 +39,11 @@ REFUSE_RULES = [
 def policy_check(user_text: str):
     """Returns (allowed: bool, reason: str)."""
     t = (user_text or "").lower()
+    reasons = []
     for pat, reason in REFUSE_RULES:
-        if re.search(pat, t):
-            return False, reason
-    return True, ""
+        if re.search(pat, t) and reason not in reasons:
+            reasons.append(reason)
+    return (False, " ".join(reasons)) if reasons else (True, "")
 
 
 def allowed_recipient(addr: str) -> bool:

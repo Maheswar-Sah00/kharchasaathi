@@ -99,14 +99,14 @@ def main():
                          "errors": [{"description": d[:60], "predicted": r["category"], "truth": g}
                                     for r, (d, g) in zip(rs, items) if r["category"] != g][:12]}
         return out
-    hard = [(r["description"], r["category"]) for r in csv.DictReader(open(os.path.join(ROOT, "data", "eval_hard_india.csv"), encoding="utf-8"))]
+    hard = [(r["description"], r["category"]) for r in csv.DictReader(open(os.path.join(HERE, "eval_hard_india.csv"), encoding="utf-8"))]
     hard_res = ext_eval(hard)
     print(f"  Hard India set ({len(hard)} messy descriptors): LLM-only {hard_res['llm_only']['accuracy']*100:.1f}% | hybrid {hard_res['hybrid']['accuracy']*100:.1f}%")
     HF_MAP = {"Healthcare": "Health & Fitness", "Subscription": "Entertainment & Subscriptions", "Transportation": "Transport",
               "Income": "Income", "Insurance": "Insurance", "Restaurants": "Food & Dining", "Utilities": "Utilities & Bills",
               "Entertainment": "Entertainment & Subscriptions", "Fees": "Fees & Charges", "Groceries": "Groceries",
               "Transfer": "Transfers", "Travel": "Travel", "Shopping": "Shopping", "Education": "Education", "Housing": "Rent"}
-    hf_rows = list(csv.DictReader(open(os.path.join(ROOT, "data", "public_benchmark", "transactions-synthetic.csv"), encoding="utf-8")))
+    hf_rows = list(csv.DictReader(open(os.path.join(HERE, "public_benchmark", "transactions-synthetic.csv"), encoding="utf-8")))
     rnd = random.Random(7)
     hf = []
     for cat in sorted(HF_MAP):

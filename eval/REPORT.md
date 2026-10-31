@@ -1,6 +1,6 @@
 # KharchaSaathi - Evaluation Report
 
-Generated 2026-10-31T11:04:40 · model `claude-opus-5-5` · 140 hand-labeled transactions (3 months, bank CSV + card PDFs)
+Generated 2026-10-31T11:22:53 · model `claude-opus-5-5` · 140 hand-labeled transactions (3 months, bank CSV + card PDFs)
 
 ## 1. Categorization accuracy
 
