@@ -126,3 +126,28 @@ def test_memory_inspect_and_forget(client):
 def test_runs_history(client, seeded_run):
     runs = client.get("/api/runs").json()["runs"]
     assert runs[0]["transactions"] == 140 and runs[0]["subscriptions"] == 10
+
+
+def test_sent_dispute_is_not_drafted_again_in_a_later_audit(client, seeded_run, sample_rows, no_llm):
+    """Regression: audit #2 re-drafted a Netflix dispute that was already sent after audit #1."""
+    from core import agent, emails
+    rid, ids = seeded_run
+    fid = ids[("duplicate", "netflix")]
+    did = client.post(f"/api/findings/{fid}/draft", json={}).json()["draft_id"]
+    db.x("UPDATE drafts SET status='SENT', decided_at=? WHERE id=?", (db.now(), did))
+    rid2 = db.x("INSERT INTO runs(started_at,goal,status) VALUES(?,?,?)", (db.now(), "second audit", "running"))
+    ctx = agent.Ctx(rid2, [], {}, 40)
+    ctx.rows = sample_rows
+    out = agent.run_tool(ctx, "detect_duplicates", {})
+    nf = next(d for d in out["confirmed_duplicates"] if d["merchant"] == "Netflix")
+    res = agent.run_tool(ctx, "draft_email", {"finding_id": nf["finding_id"], "kind": "dispute"})
+    assert res.get("not_drafted") and "draft_id" not in res
+    assert client.post(f"/api/findings/{nf['finding_id']}/draft", json={}).json()["already_sent"] is True
+    sw = next(d for d in out["confirmed_duplicates"] if d["merchant"] == "Swiggy")
+    assert agent.run_tool(ctx, "draft_email", {"finding_id": sw["finding_id"], "kind": "dispute"})["status"] == "PENDING_APPROVAL"
+
+
+def test_chat_answer_cleanup():
+    from core import chat
+    assert chat.clean_answer("antml:format(Yes. You paid ₹12,000.)") == "Yes. You paid ₹12,000."
+    assert chat.clean_answer(" Normal answer (with brackets). ") == "Normal answer (with brackets)."

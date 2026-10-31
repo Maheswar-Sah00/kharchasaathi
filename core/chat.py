@@ -5,7 +5,7 @@ renewals, budget, memory, what changed since last audit). The only write it can 
 which lands as PENDING_APPROVAL like every other draft. It can never send, pay or share anything.
 Conversations persist in SQLite (chat_messages) so follow-up questions keep context.
 """
-import json, uuid
+import json, re, uuid
 from collections import defaultdict
 from . import db, llm, safety, detectors, emails, compare, categorize
 
@@ -170,6 +170,9 @@ def tool_request_email_draft(rid, a, profile):
                     (f["id"], a["kind"]), one=True)
     if existing:
         return {"draft_id": existing["id"], "status": "PENDING_APPROVAL", "subject": existing["subject"], "already_existed": True}
+    sent = emails.already_sent(f["kind"], f["merchant"], f["amount"], a["kind"])
+    if sent:
+        return {"not_drafted": True, "already_sent": sent["subject"], "sent_at": sent["decided_at"]}
     details = dict(json.loads(f["details"]), id=f["id"])
     did, out = emails.draft(rid, details, a["kind"], profile)
     return {"draft_id": did, "status": "PENDING_APPROVAL", "subject": out["subject"],
@@ -225,7 +228,7 @@ def ask(message, session_id=None, profile=None, on_event=None, max_turns=8):
         messages.append({"role": "assistant", "content": resp.content})
         uses = [b for b in resp.content if getattr(b, "type", "") == "tool_use"]
         if not uses:
-            answer = llm.text_of(resp).strip()
+            answer = clean_answer(llm.text_of(resp))
             break
         results = []
         for u in uses:
@@ -241,6 +244,13 @@ def ask(message, session_id=None, profile=None, on_event=None, max_turns=8):
                             "content": json.dumps(out, default=str, ensure_ascii=False)[:10000], "is_error": "error" in out})
         messages.append({"role": "user", "content": results})
     return _finish(session_id, rid, answer or "Sorry, I couldn't finish answering that. Try rephrasing.", emit)
+
+
+def clean_answer(text):
+    """Strip a stray formatting wrapper occasionally seen around model text, e.g. antml:format(...)."""
+    text = (text or "").strip()
+    m = re.fullmatch(r"antml:\w+\((.*)\)", text, flags=re.S)
+    return m.group(1).strip() if m else text
 
 
 def _finish(session_id, rid, answer, emit):

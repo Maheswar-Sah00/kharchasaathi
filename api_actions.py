@@ -148,6 +148,9 @@ def draft_for_finding(fid: int, req: DraftReq):
     existing = db.q("SELECT * FROM drafts WHERE finding_id=? AND kind=? AND status='PENDING_APPROVAL'", (fid, kind), one=True)
     if existing:
         return {"ok": True, "draft_id": existing["id"], "existing": True, "subject": existing["subject"]}
+    sent = emails.already_sent(f["kind"], f["merchant"], f["amount"], kind)
+    if sent:
+        return {"ok": False, "already_sent": True, "subject": sent["subject"], "sent_at": sent["decided_at"]}
     details = dict(f["details"], id=fid)
     did, out = emails.draft(f["run_id"], details, kind, GT_PROFILE)
     db.log(f["run_id"], "user", "draft_requested", {"finding_id": fid, "kind": kind, "draft_id": did})

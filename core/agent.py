@@ -297,6 +297,10 @@ def run_tool(ctx: Ctx, name, inp):
         fr = db.q("SELECT * FROM findings WHERE id=? AND run_id=?", (inp["finding_id"], rid), one=True)
         if not fr:
             return {"error": "unknown finding_id"}
+        sent = emails.already_sent(fr["kind"], fr["merchant"], fr["amount"], inp["kind"])
+        if sent:
+            return {"not_drafted": True, "already_sent": sent["subject"], "sent_at": sent["decided_at"],
+                    "note": "This email already went out after the user approved it. Do not draft it again; tell the user."}
         details = json.loads(fr["details"])
         details["id"] = fr["id"]
         did, out = emails.draft(rid, details, inp["kind"], ctx.profile)

@@ -18,6 +18,13 @@ KIND_GUIDE = {
 }
 
 
+def already_sent(finding_kind, merchant, amount, kind):
+    """An email of this kind for the same problem already went out in any audit. Don't draft it twice."""
+    return db.q("SELECT d.id, d.subject, d.decided_at FROM drafts d JOIN findings f ON f.id = d.finding_id "
+                "WHERE d.status='SENT' AND d.kind=? AND f.kind=? AND f.merchant=? AND f.amount=? ORDER BY d.id DESC LIMIT 1",
+                (kind, finding_kind, merchant, amount), one=True)
+
+
 def draft(run_id, finding, kind, profile):
     sys = ("You write short, polite, firm consumer emails for an Indian customer. Plain text, under 170 words. "
            "Never include card numbers beyond the last 4 digits, never include OTP/CVV. Sign with the customer's name. "
